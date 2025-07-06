@@ -1,0 +1,36 @@
+# Ignore test and example directories
+tmp/
+
+# Ruby/Bundler files
+.bundle/
+vendor/bundle/
+
+# RSpec coverage
+coverage/
+
+# Local configuration
+.env
+.env.local
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Log files
+*.log
+
+# Temporary files
+*.tmp
+*.temp
