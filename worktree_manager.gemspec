@@ -1,0 +1,21 @@
+Gem::Specification.new do |spec|
+  spec.name          = "worktree_manager"
+  spec.version       = "0.1.0"
+  spec.authors       = ["nacyot"]
+  spec.email         = ["propellerheaven@gmail.com"]
+
+  spec.summary       = "Git worktree management tool"
+  spec.description   = "A Ruby gem for managing git worktrees with ease"
+  spec.homepage      = "https://github.com/ben/worktree_manager"
+  spec.license       = "MIT"
+
+  spec.files         = Dir["lib/**/*", "bin/*", "README.md", "LICENSE"]
+  spec.bindir        = "bin"
+  spec.executables   = spec.files.grep(%r{^bin/}) { |f| File.basename(f) }
+  spec.require_paths = ["lib"]
+
+  spec.required_ruby_version = ">= 3.0.0"
+
+  spec.add_development_dependency "rspec", "~> 3.0"
+  spec.add_development_dependency "rake", "~> 13.0"
+end
