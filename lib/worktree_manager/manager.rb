@@ -1,4 +1,5 @@
 require "open3"
+require_relative "worktree"
 
 module WorktreeManager
   class Manager
@@ -16,19 +17,40 @@ module WorktreeManager
       parse_worktree_list(output)
     end
 
-    def add(path, branch = nil)
+    def add(path, branch = nil, force: false)
       command = ["worktree", "add"]
+      command << "--force" if force
       command << path
       command << branch if branch
 
       output, status = execute_git_command(command.join(" "))
       raise Error, output unless status.success?
 
-      Worktree.new(path, branch)
+      # 생성된 worktree 정보 반환
+      worktree_info = { path: path }
+      worktree_info[:branch] = branch if branch
+      Worktree.new(worktree_info)
     end
 
-    def remove(path)
-      output, status = execute_git_command("worktree remove #{path}")
+    def add_with_new_branch(path, branch, force: false)
+      command = ["worktree", "add"]
+      command << "--force" if force
+      command << "-b" << branch
+      command << path
+
+      output, status = execute_git_command(command.join(" "))
+      raise Error, output unless status.success?
+
+      # 생성된 worktree 정보 반환
+      Worktree.new(path: path, branch: branch)
+    end
+
+    def remove(path, force: false)
+      command = ["worktree", "remove"]
+      command << "--force" if force
+      command << path
+
+      output, status = execute_git_command(command.join(" "))
       raise Error, output unless status.success?
       
       true
