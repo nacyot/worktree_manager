@@ -2,6 +2,13 @@ require "spec_helper"
 
 RSpec.describe WorktreeManager::CLI do
   let(:cli) { WorktreeManager::CLI.new }
+  
+  # Stub exit for tests that expect SystemExit
+  def stub_exit
+    allow(cli).to receive(:exit) do |code|
+      raise SystemExit.new(code)
+    end
+  end
 
   describe "#version" do
     it "displays the version" do
@@ -13,6 +20,7 @@ RSpec.describe WorktreeManager::CLI do
     context "when not in a git repository" do
       before do
         allow(cli).to receive(:find_main_repository_path).and_return(nil)
+        stub_exit
       end
 
       it "exits with error message" do
@@ -81,6 +89,7 @@ RSpec.describe WorktreeManager::CLI do
   describe "#add" do
     let(:manager) { instance_double(WorktreeManager::Manager) }
     let(:hook_manager) { instance_double(WorktreeManager::HookManager) }
+    let(:config_manager) { instance_double(WorktreeManager::ConfigManager) }
     let(:worktree) { instance_double(WorktreeManager::Worktree, path: "/test/path", branch: "main") }
 
     context "when running from a worktree" do
@@ -107,6 +116,8 @@ RSpec.describe WorktreeManager::CLI do
         allow(cli).to receive(:main_repository?).and_return(true)
         allow(WorktreeManager::Manager).to receive(:new).and_return(manager)
         allow(WorktreeManager::HookManager).to receive(:new).and_return(hook_manager)
+        allow(WorktreeManager::ConfigManager).to receive(:new).and_return(config_manager)
+        allow(config_manager).to receive(:resolve_worktree_path).with("/test/path").and_return("/test/path")
       end
 
       context "when hooks succeed" do
@@ -175,6 +186,38 @@ RSpec.describe WorktreeManager::CLI do
         it "creates worktree with new branch" do
           cli.invoke(:add, ["/test/path"], { branch: "feature" })
           expect(manager).to have_received(:add_with_new_branch).with("/test/path", "feature", force: nil)
+        end
+      end
+
+      context "with track option" do
+        before do
+          allow(hook_manager).to receive(:execute_hook).and_return(true)
+          allow(manager).to receive(:add_tracking_branch).and_return(worktree)
+          allow(manager).to receive(:list).and_return([])
+          allow(File).to receive(:expand_path).and_call_original
+          allow(Dir).to receive(:exist?).and_return(false)
+          allow(Open3).to receive(:capture2e).and_return(["", double(success?: true)])
+        end
+
+        it "creates worktree tracking remote branch" do
+          cli.invoke(:add, ["/test/path"], { track: "origin/feature" })
+          expect(manager).to have_received(:add_tracking_branch).with("/test/path", "feature", "origin/feature", force: nil)
+        end
+      end
+
+      context "with auto-detected remote branch" do
+        before do
+          allow(hook_manager).to receive(:execute_hook).and_return(true)
+          allow(manager).to receive(:add_tracking_branch).and_return(worktree)
+          allow(manager).to receive(:list).and_return([])
+          allow(File).to receive(:expand_path).and_call_original
+          allow(Dir).to receive(:exist?).and_return(false)
+          allow(Open3).to receive(:capture2e).and_return(["", double(success?: true)])
+        end
+
+        it "detects and tracks remote branch when branch contains /" do
+          cli.invoke(:add, ["/test/path", "origin/pr-123"])
+          expect(manager).to have_received(:add_tracking_branch).with("/test/path", "pr-123", "origin/pr-123", force: nil)
         end
       end
     end

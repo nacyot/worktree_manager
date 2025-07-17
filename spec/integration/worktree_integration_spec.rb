@@ -1,6 +1,7 @@
 require "spec_helper"
 require "tmpdir"
 require "fileutils"
+require "pathname"
 
 RSpec.describe "Worktree Integration Tests" do
   let(:original_dir) { Dir.pwd }
@@ -12,9 +13,9 @@ RSpec.describe "Worktree Integration Tests" do
   let(:hook_file) { File.join(main_repo_path, ".worktree.yml") }
 
   around do |example|
-    # 원래 디렉터리 저장
+    # Save original directory
     Dir.chdir(original_dir) do
-      # 테스트용 Git 저장소 생성
+      # Create test Git repository
       Dir.chdir(test_dir) do
         `git init main-repo`
         Dir.chdir("main-repo") do
@@ -26,45 +27,45 @@ RSpec.describe "Worktree Integration Tests" do
         end
       end
 
-      # Hook 파일 생성
+      # Create hook file
       hook_config = <<~YAML
         hooks:
           pre_add:
             commands:
-              - "echo \\"테스트 Hook: Worktree 생성 시작 $WORKTREE_PATH\\""
+              - "echo \\"Test Hook: Starting worktree creation $WORKTREE_PATH\\""
           post_add:
             commands:
-              - "echo \\"테스트 Hook: Worktree 생성 완료 $WORKTREE_PATH\\""
-              - "echo \\"브랜치: $WORKTREE_BRANCH\\""
+              - "echo \\"Test Hook: Worktree creation completed $WORKTREE_PATH\\""
+              - "echo \\"Branch: $WORKTREE_BRANCH\\""
           pre_remove:
             commands:
-              - "echo \\"테스트 Hook: Worktree 삭제 시작 $WORKTREE_PATH\\""
+              - "echo \\"Test Hook: Starting worktree removal $WORKTREE_PATH\\""
           post_remove:
             commands:
-              - "echo \\"테스트 Hook: Worktree 삭제 완료 $WORKTREE_PATH\\""
+              - "echo \\"Test Hook: Worktree removal completed $WORKTREE_PATH\\""
       YAML
       File.write(hook_file, hook_config)
 
-      # 메인 저장소에서 예제 실행
+      # Run example in main repository
       Dir.chdir(main_repo_path) do
         example.run
       end
     end
   ensure
-    # 테스트 디렉터리 정리
+    # Clean up test directory
     FileUtils.rm_rf(test_dir) if Dir.exist?(test_dir)
   end
 
-  describe "완전한 워크플로우 테스트" do
-    it "worktree 생성부터 삭제까지 전체 플로우가 정상 동작한다" do
+  describe "Complete workflow tests" do
+    it "works correctly from worktree creation to removal" do
       manager = WorktreeManager::Manager.new(main_repo_path)
       hook_manager = WorktreeManager::HookManager.new(main_repo_path)
 
-      # 1. 초기 상태 확인 (메인 저장소도 worktree로 포함됨)
+      # 1. Check initial state (main repository is also included as a worktree)
       initial_worktrees = manager.list
       initial_count = initial_worktrees.size
 
-      # 2. 새 브랜치로 worktree 생성
+      # 2. Create worktree with new branch
       expect(hook_manager.execute_hook(:pre_add, path: worktree_path, branch: branch_name)).to be true
       
       worktree = manager.add_with_new_branch(worktree_path, branch_name)
@@ -74,7 +75,7 @@ RSpec.describe "Worktree Integration Tests" do
       
       expect(hook_manager.execute_hook(:post_add, path: worktree_path, branch: branch_name)).to be true
 
-      # 3. 생성된 worktree 확인
+      # 3. Verify created worktree
       worktrees = manager.list
       expect(worktrees.size).to eq(initial_count + 1)
       
@@ -84,39 +85,39 @@ RSpec.describe "Worktree Integration Tests" do
       expect(new_worktree).not_to be_nil
       expect(new_worktree.branch).to eq("refs/heads/#{branch_name}")
 
-      # 4. 파일 시스템에서 worktree 디렉터리 확인
+      # 4. Verify worktree directory in file system
       expect(Dir.exist?(worktree_path)).to be true
       expect(File.exist?(File.join(worktree_path, ".git"))).to be true
 
-      # 5. Hook과 함께 worktree 삭제
+      # 5. Remove worktree with hooks
       expect(hook_manager.execute_hook(:pre_remove, path: worktree_path, branch: branch_name)).to be true
       
       expect(manager.remove(worktree_path)).to be true
       
       expect(hook_manager.execute_hook(:post_remove, path: worktree_path, branch: branch_name)).to be true
 
-      # 6. 삭제 확인
+      # 6. Verify removal
       expect(manager.list.size).to eq(initial_count)
       expect(Dir.exist?(worktree_path)).to be false
     end
 
-    it "동일한 경로에 여러 번 생성하면 에러가 발생한다" do
+    it "raises error when creating multiple times at the same path" do
       manager = WorktreeManager::Manager.new(main_repo_path)
       
-      # 첫 번째 생성
+      # First creation
       worktree1 = manager.add_with_new_branch(worktree_path, branch_name)
       expect(worktree1).not_to be_nil
 
-      # 동일한 경로에 다시 생성 시도
+      # Try to create again at the same path
       expect {
         manager.add_with_new_branch(worktree_path, "#{branch_name}-2")
       }.to raise_error(WorktreeManager::Error, /already exists/)
 
-      # 정리
+      # Cleanup
       manager.remove(worktree_path)
     end
 
-    it "존재하지 않는 worktree 삭제 시 에러가 발생한다" do
+    it "raises error when removing non-existent worktree" do
       manager = WorktreeManager::Manager.new(main_repo_path)
       
       expect {
@@ -125,9 +126,9 @@ RSpec.describe "Worktree Integration Tests" do
     end
   end
 
-  describe "Hook 시스템 통합 테스트" do
-    it "Hook 실행 중 에러가 발생하면 적절히 처리한다" do
-      # 에러가 발생하는 Hook 설정
+  describe "Hook system integration tests" do
+    it "handles errors during hook execution properly" do
+      # Set up hook that causes error
       error_hook_file = File.join(main_repo_path, ".worktree.yml")
       error_hook_config = <<~YAML
         hooks:
@@ -140,12 +141,12 @@ RSpec.describe "Worktree Integration Tests" do
 
       hook_manager = WorktreeManager::HookManager.new(main_repo_path)
       
-      # Hook 실행 시 false 반환
+      # Hook execution returns false
       expect(hook_manager.execute_hook(:pre_add, path: worktree_path, branch: branch_name)).to be false
     end
 
-    it "Hook에서 환경 변수가 올바르게 전달된다" do
-      # 환경 변수 출력 Hook 설정
+    it "passes environment variables correctly to hooks" do
+      # Set up hook that outputs environment variables
       env_hook_file = File.join(main_repo_path, ".worktree.yml")
       env_hook_config = <<~YAML
         hooks:
@@ -157,34 +158,131 @@ RSpec.describe "Worktree Integration Tests" do
 
       hook_manager = WorktreeManager::HookManager.new(main_repo_path)
       
-      # Hook 실행 시 환경 변수 확인
+      # Verify environment variables during hook execution
       expect {
         hook_manager.execute_hook(:pre_add, path: worktree_path, branch: branch_name)
       }.to output(/PATH=.*test-worktree.*BRANCH=.*test\/branch.*ROOT=.*main-repo/).to_stdout
     end
   end
 
-  describe "CLI 통합 테스트" do
-    it "CLI를 통한 전체 워크플로우가 정상 동작한다" do
+  describe "CLI integration tests" do
+    it "complete workflow works correctly through CLI" do
       cli = WorktreeManager::CLI.new
 
-      # CLI 환경 설정
+      # Set up CLI environment
       allow(cli).to receive(:main_repository?).and_return(true)
+      # Stub exit to prevent actual process termination
+      allow(cli).to receive(:exit)
 
-      # add 명령 실행
+      # Execute add command
       expect {
         cli.invoke(:add, [worktree_path], { branch: branch_name })
       }.to output(/Worktree created:.*test-worktree/).to_stdout
 
-      # list 명령 실행
+      # Execute list command
       expect {
         cli.list
       }.to output(/test-worktree/).to_stdout
 
-      # remove 명령 실행
+      # Execute remove command
+      # Git stores relative paths, so remove using relative path
+      relative_path = Pathname.new(worktree_path).relative_path_from(Pathname.new(main_repo_path)).to_s
       expect {
-        cli.remove(worktree_path)
+        cli.remove(relative_path)
       }.to output(/Worktree removed:.*test-worktree/).to_stdout
+    end
+  end
+
+  describe "worktrees_dir feature integration tests" do
+    let(:worktrees_dir) { "../worktrees" }
+    let(:worktree_name) { "feature-branch-#{test_id}" }
+    let(:expected_path) { File.expand_path(File.join(worktrees_dir, worktree_name), main_repo_path) }
+
+    before do
+      # Add worktrees_dir configuration
+      config_with_dir = <<~YAML
+        worktrees_dir: "#{worktrees_dir}"
+        hooks:
+          post_add:
+            commands:
+              - "echo 'Worktree created at $WORKTREE_ABSOLUTE_PATH'"
+      YAML
+      File.write(hook_file, config_with_dir)
+    end
+
+    it "creates worktree according to worktrees_dir setting" do
+      cli = WorktreeManager::CLI.new
+      allow(cli).to receive(:main_repository?).and_return(true)
+      allow(cli).to receive(:exit)
+
+      # Add worktree with name only
+      expect {
+        cli.invoke(:add, [worktree_name], { branch: worktree_name })
+      }.to output(/Worktree created:.*#{worktree_name}/).to_stdout
+
+      # Verify created at correct location
+      expect(Dir.exist?(expected_path)).to be true
+
+      # Cleanup
+      manager = WorktreeManager::Manager.new(main_repo_path)
+      manager.remove(expected_path)
+    end
+
+    it "removes worktree using worktrees_dir setting" do
+      # Create worktree first
+      manager = WorktreeManager::Manager.new(main_repo_path)
+      FileUtils.mkdir_p(File.dirname(expected_path))
+      manager.add_with_new_branch(expected_path, worktree_name)
+
+      cli = WorktreeManager::CLI.new
+      allow(cli).to receive(:main_repository?).and_return(true)
+      allow(cli).to receive(:exit)
+
+      # Remove worktree with name only
+      expect {
+        cli.remove(worktree_name)
+      }.to output(/Worktree removed:.*#{worktree_name}/).to_stdout
+
+      expect(Dir.exist?(expected_path)).to be false
+    end
+
+    it "processes relative path based on repository" do
+      cli = WorktreeManager::CLI.new
+      allow(cli).to receive(:main_repository?).and_return(true)
+      allow(cli).to receive(:exit)
+
+      relative_path = "../custom/worktree"
+      expected_custom_path = File.expand_path(relative_path, main_repo_path)
+
+      # Add worktree with relative path
+      expect {
+        cli.invoke(:add, [relative_path], { branch: "custom-branch" })
+      }.to output(/Worktree created:.*custom\/worktree/).to_stdout
+
+      expect(Dir.exist?(expected_custom_path)).to be true
+
+      # Cleanup
+      manager = WorktreeManager::Manager.new(main_repo_path)
+      manager.remove(expected_custom_path)
+    end
+
+    it "uses absolute path as is when provided" do
+      cli = WorktreeManager::CLI.new
+      allow(cli).to receive(:main_repository?).and_return(true)
+      allow(cli).to receive(:exit)
+
+      absolute_path = File.join(test_dir, "absolute-worktree")
+
+      # Add worktree with absolute path
+      expect {
+        cli.invoke(:add, [absolute_path], { branch: "absolute-branch" })
+      }.to output(/Worktree created:.*absolute-worktree/).to_stdout
+
+      expect(Dir.exist?(absolute_path)).to be true
+
+      # Cleanup
+      manager = WorktreeManager::Manager.new(main_repo_path)
+      manager.remove(absolute_path)
     end
   end
 end

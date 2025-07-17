@@ -5,6 +5,11 @@
 # 1. .worktree.yml (repository root)
 # 2. .git/worktree.yml
 
+# Base directory for worktrees
+# When you run 'wm add <name>', it will create worktree at '<worktrees_dir>/<name>'
+# Default: "../" (parent directory of the main repository)
+worktrees_dir: "../"
+
 # Hook Configuration
 # Define scripts to execute during worktree creation/removal.
 hooks:

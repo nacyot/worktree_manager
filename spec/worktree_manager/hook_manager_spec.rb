@@ -239,7 +239,7 @@ RSpec.describe WorktreeManager::HookManager do
     it "passes context as environment variables" do
       context = { path: "/test/path", branch: "feature" }
       
-      # 실제로는 stdout capture가 필요하지만 여기서는 성공 여부만 확인
+      # Actually needs stdout capture but only checking success here
       expect(hook_manager.execute_hook(:pre_add, context)).to be true
     end
   end
