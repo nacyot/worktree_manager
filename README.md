@@ -263,46 +263,6 @@ hooks:
     pwd: "$WORKTREE_ABSOLUTE_PATH"
 ```
 
-### Legacy Configuration Support
-
-For backward compatibility, the following formats are still supported:
-
-```yaml
-# Simple string command
-pre_add: "echo 'Simple command'"
-
-# Array of commands
-post_add:
-  - "echo 'Command 1'"
-  - "echo 'Command 2'"
-
-# Hash with single command
-pre_remove:
-  command: "echo 'Command with options'"
-  stop_on_error: false
-```
-
-## Error Prevention
-
-WorktreeManager automatically validates various error conditions:
-
-- ❌ **Empty path input**
-- ❌ **Invalid branch names** (spaces, special characters)
-- ❌ **Existing directory conflicts**
-- ❌ **Branch already in use**
-- ❌ **Attempting to remove main repository**
-
-### Error Message Examples
-
-```bash
-$ wm add existing-dir -b new-branch
-Error: Directory 'existing-dir' already exists and is not empty
-  Use --force to override or choose a different path
-
-$ wm add ../test -b "invalid branch"
-Error: Invalid branch name 'invalid branch'. Branch names cannot contain spaces or special characters.
-```
-
 ## CLI Command Reference
 
 ### `wm version`
@@ -371,31 +331,12 @@ gem build worktree_manager.gemspec
 gem install worktree_manager-*.gem
 ```
 
-### Test Coverage
-
-- **53 unit tests**: Comprehensive coverage of all core features
-- **Integration tests**: Real Git environment validation
-- **Error handling tests**: Various error condition simulations
-- **Hook system tests**: Environment variable passing and execution validation
-
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/ben/worktree_manager.
+Bug reports and pull requests are welcome on GitHub at https://github.com/nacyot/worktree_manager.
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
 3. Commit your changes (`git commit -m 'Add amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
-
-## Changelog
-
-### 0.1.0
-
-- Initial release
-- Basic worktree management (add, remove, list)
-- CLI interface with `wm` command
-- Hook system support with YAML configuration
-- Conflict detection and validation
-- Comprehensive error handling
-- Verbose debugging mode
