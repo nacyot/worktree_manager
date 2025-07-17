@@ -429,6 +429,117 @@ RSpec.describe WorktreeManager::CLI do
           cli.invoke(:remove, ["/test/path"], { no_hooks: true })
         end
       end
+      
+      context "when trying to remove main repository" do
+        let(:config_manager) { instance_double(WorktreeManager::ConfigManager) }
+        
+        before do
+          allow(WorktreeManager::ConfigManager).to receive(:new).and_return(config_manager)
+          allow(cli).to receive(:is_main_repository?).with("/main/repo").and_return(true)
+          allow(config_manager).to receive(:resolve_worktree_path).and_return("/main/repo")
+        end
+
+        it "prevents removal of main repository" do
+          expect { cli.remove("/main/repo") }.to output(/Error: Cannot remove the main repository/).to_stdout
+            .and raise_error(SystemExit)
+        end
+      end
+
+      context "with --all option" do
+        let(:main_worktree) { instance_double(WorktreeManager::Worktree, path: "/main/repo", branch: "main") }
+        let(:feature_worktree) { instance_double(WorktreeManager::Worktree, path: "/feature", branch: "feature") }
+        
+        before do
+          allow(manager).to receive(:list).and_return([main_worktree, worktree, feature_worktree])
+          allow(cli).to receive(:is_main_repository?).with("/main/repo").and_return(true)
+          allow(cli).to receive(:is_main_repository?).with("/test/path").and_return(false)
+          allow(cli).to receive(:is_main_repository?).with("/feature").and_return(false)
+          allow(manager).to receive(:remove)
+          allow(hook_manager).to receive(:execute_hook).and_return(true)
+        end
+
+        it "filters out main repository from removal" do
+          expect do
+            cli.invoke(:remove, [], { all: true, force: true })
+          end.to output(/Removing worktree: \/test\/path.*Removing worktree: \/feature/m).to_stdout
+                .and output(satisfy { |text| !text.include?("Removing worktree: /main/repo") }).to_stdout
+          
+          # Verify remove was not called for main repository
+          expect(manager).not_to have_received(:remove).with("/main/repo", anything)
+          expect(manager).to have_received(:remove).with("/test/path", anything)
+          expect(manager).to have_received(:remove).with("/feature", anything)
+        end
+        
+        it "shows message when only main repository exists" do
+          allow(manager).to receive(:list).and_return([main_worktree])
+          expect { cli.invoke(:remove, [], { all: true }) }.to output(/No worktrees to remove \(only main repository found\)/).to_stdout
+            .and raise_error(SystemExit)
+        end
+      end
+      
+      context "with interactive selection" do
+        let(:main_worktree) { instance_double(WorktreeManager::Worktree, path: "/main/repo", branch: "main") }
+        let(:feature_worktree) { instance_double(WorktreeManager::Worktree, path: "/feature", branch: "feature") }
+        
+        before do
+          allow(manager).to receive(:list).and_return([main_worktree, worktree, feature_worktree])
+          allow(cli).to receive(:is_main_repository?).with("/main/repo").and_return(true)
+          allow(cli).to receive(:is_main_repository?).with("/test/path").and_return(false)
+          allow(cli).to receive(:is_main_repository?).with("/feature").and_return(false)
+          allow(cli).to receive(:interactive_mode_available?).and_return(true)
+        end
+        
+        it "filters out main repository from interactive selection" do
+          allow(cli).to receive(:select_worktree_interactive).with([worktree, feature_worktree]).and_return(worktree)
+          allow(manager).to receive(:remove)
+          allow(hook_manager).to receive(:execute_hook).and_return(true)
+          
+          cli.remove
+          expect(cli).to have_received(:select_worktree_interactive).with([worktree, feature_worktree])
+        end
+        
+        it "shows error when only main repository exists" do
+          allow(manager).to receive(:list).and_return([main_worktree])
+          expect { cli.remove }.to output(/Error: No removable worktrees found \(only main repository exists\)/).to_stdout
+            .and raise_error(SystemExit)
+        end
+      end
+    end
+  end
+
+  describe "#is_main_repository?" do
+    subject { cli.send(:is_main_repository?, path) }
+    
+    context "when .git is a directory" do
+      let(:path) { "/test/main" }
+      
+      before do
+        allow(File).to receive(:exist?).with("/test/main/.git").and_return(true)
+        allow(File).to receive(:directory?).with("/test/main/.git").and_return(true)
+      end
+      
+      it { is_expected.to be true }
+    end
+    
+    context "when .git is a file" do
+      let(:path) { "/test/worktree" }
+      
+      before do
+        allow(File).to receive(:exist?).with("/test/worktree/.git").and_return(true)
+        allow(File).to receive(:directory?).with("/test/worktree/.git").and_return(false)
+      end
+      
+      it { is_expected.to be false }
+    end
+    
+    context "when .git does not exist" do
+      let(:path) { "/test/notgit" }
+      
+      before do
+        allow(File).to receive(:exist?).with("/test/notgit/.git").and_return(false)
+      end
+      
+      it { is_expected.to be false }
     end
   end
 
