@@ -3,45 +3,54 @@ require "tmpdir"
 require "fileutils"
 
 RSpec.describe "Worktree Integration Tests" do
+  let(:original_dir) { Dir.pwd }
   let(:test_id) { Time.now.to_i }
   let(:test_dir) { Dir.mktmpdir("worktree_integration_#{test_id}") }
   let(:main_repo_path) { File.join(test_dir, "main-repo") }
   let(:worktree_path) { File.join(test_dir, "test-worktree") }
   let(:branch_name) { "test/branch-#{test_id}" }
-  let(:hook_file) { File.join(main_repo_path, ".worktree_hooks.yml") }
+  let(:hook_file) { File.join(main_repo_path, ".worktree.yml") }
 
-  before do
-    # 테스트용 Git 저장소 생성
-    Dir.chdir(test_dir) do
-      `git init main-repo`
-      Dir.chdir("main-repo") do
-        `git config user.name "Test User"`
-        `git config user.email "test@example.com"`
-        File.write("README.md", "# Test Repository")
-        `git add README.md`
-        `git commit -m "Initial commit"`
+  around do |example|
+    # 원래 디렉터리 저장
+    Dir.chdir(original_dir) do
+      # 테스트용 Git 저장소 생성
+      Dir.chdir(test_dir) do
+        `git init main-repo`
+        Dir.chdir("main-repo") do
+          `git config user.name "Test User"`
+          `git config user.email "test@example.com"`
+          File.write("README.md", "# Test Repository")
+          `git add README.md`
+          `git commit -m "Initial commit"`
+        end
+      end
+
+      # Hook 파일 생성
+      hook_config = <<~YAML
+        hooks:
+          pre_add:
+            commands:
+              - "echo \\"테스트 Hook: Worktree 생성 시작 $WORKTREE_PATH\\""
+          post_add:
+            commands:
+              - "echo \\"테스트 Hook: Worktree 생성 완료 $WORKTREE_PATH\\""
+              - "echo \\"브랜치: $WORKTREE_BRANCH\\""
+          pre_remove:
+            commands:
+              - "echo \\"테스트 Hook: Worktree 삭제 시작 $WORKTREE_PATH\\""
+          post_remove:
+            commands:
+              - "echo \\"테스트 Hook: Worktree 삭제 완료 $WORKTREE_PATH\\""
+      YAML
+      File.write(hook_file, hook_config)
+
+      # 메인 저장소에서 예제 실행
+      Dir.chdir(main_repo_path) do
+        example.run
       end
     end
-
-    # Hook 파일 생성
-    hook_config = <<~YAML
-      pre_add:
-        command: "echo \"테스트 Hook: Worktree 생성 시작 $WORKTREE_PATH\""
-      post_add:
-        - "echo \"테스트 Hook: Worktree 생성 완료 $WORKTREE_PATH\""
-        - "echo \"브랜치: $WORKTREE_BRANCH\""
-      pre_remove:
-        command: "echo \"테스트 Hook: Worktree 삭제 시작 $WORKTREE_PATH\""
-      post_remove:
-        - "echo \"테스트 Hook: Worktree 삭제 완료 $WORKTREE_PATH\""
-    YAML
-    File.write(hook_file, hook_config)
-
-    # 작업 디렉터리를 메인 저장소로 변경
-    Dir.chdir(main_repo_path)
-  end
-
-  after do
+  ensure
     # 테스트 디렉터리 정리
     FileUtils.rm_rf(test_dir) if Dir.exist?(test_dir)
   end
@@ -51,8 +60,9 @@ RSpec.describe "Worktree Integration Tests" do
       manager = WorktreeManager::Manager.new(main_repo_path)
       hook_manager = WorktreeManager::HookManager.new(main_repo_path)
 
-      # 1. 초기 상태 확인
-      expect(manager.list).to be_empty
+      # 1. 초기 상태 확인 (메인 저장소도 worktree로 포함됨)
+      initial_worktrees = manager.list
+      initial_count = initial_worktrees.size
 
       # 2. 새 브랜치로 worktree 생성
       expect(hook_manager.execute_hook(:pre_add, path: worktree_path, branch: branch_name)).to be true
@@ -66,9 +76,13 @@ RSpec.describe "Worktree Integration Tests" do
 
       # 3. 생성된 worktree 확인
       worktrees = manager.list
-      expect(worktrees.size).to eq(1)
-      expect(worktrees.first.path).to eq(worktree_path)
-      expect(worktrees.first.branch).to eq(branch_name)
+      expect(worktrees.size).to eq(initial_count + 1)
+      
+      new_worktree = worktrees.find { |w| 
+        File.realpath(w.path) == File.realpath(worktree_path) 
+      }
+      expect(new_worktree).not_to be_nil
+      expect(new_worktree.branch).to eq("refs/heads/#{branch_name}")
 
       # 4. 파일 시스템에서 worktree 디렉터리 확인
       expect(Dir.exist?(worktree_path)).to be true
@@ -82,7 +96,7 @@ RSpec.describe "Worktree Integration Tests" do
       expect(hook_manager.execute_hook(:post_remove, path: worktree_path, branch: branch_name)).to be true
 
       # 6. 삭제 확인
-      expect(manager.list).to be_empty
+      expect(manager.list.size).to eq(initial_count)
       expect(Dir.exist?(worktree_path)).to be false
     end
 
@@ -107,18 +121,20 @@ RSpec.describe "Worktree Integration Tests" do
       
       expect {
         manager.remove("/non/existent/path")
-      }.to raise_error(WorktreeManager::Error, /not found/)
+      }.to raise_error(WorktreeManager::Error, /is not a working tree/)
     end
   end
 
   describe "Hook 시스템 통합 테스트" do
     it "Hook 실행 중 에러가 발생하면 적절히 처리한다" do
       # 에러가 발생하는 Hook 설정
-      error_hook_file = File.join(main_repo_path, ".worktree_hooks.yml")
+      error_hook_file = File.join(main_repo_path, ".worktree.yml")
       error_hook_config = <<~YAML
-        pre_add:
-          command: "exit 1"
-          stop_on_error: true
+        hooks:
+          pre_add:
+            commands:
+              - "exit 1"
+            stop_on_error: true
       YAML
       File.write(error_hook_file, error_hook_config)
 
@@ -130,10 +146,12 @@ RSpec.describe "Worktree Integration Tests" do
 
     it "Hook에서 환경 변수가 올바르게 전달된다" do
       # 환경 변수 출력 Hook 설정
-      env_hook_file = File.join(main_repo_path, ".worktree_hooks.yml")
+      env_hook_file = File.join(main_repo_path, ".worktree.yml")
       env_hook_config = <<~YAML
-        pre_add:
-          command: "echo \"PATH=$WORKTREE_PATH BRANCH=$WORKTREE_BRANCH ROOT=$WORKTREE_MANAGER_ROOT\""
+        hooks:
+          pre_add:
+            commands:
+              - "echo \\"PATH=$WORKTREE_PATH BRANCH=$WORKTREE_BRANCH ROOT=$WORKTREE_MAIN\\""
       YAML
       File.write(env_hook_file, env_hook_config)
 
