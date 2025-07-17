@@ -223,7 +223,7 @@ RSpec.describe WorktreeManager::CLI do
     end
   end
 
-  describe "#move" do
+  describe "#jump" do
     let(:manager) { instance_double(WorktreeManager::Manager) }
     let(:worktree1) { instance_double(WorktreeManager::Worktree, path: "/path/to/main", branch: "main") }
     let(:worktree2) { instance_double(WorktreeManager::Worktree, path: "/path/to/feature", branch: "feature") }
@@ -240,7 +240,7 @@ RSpec.describe WorktreeManager::CLI do
       end
 
       it "exits with error message to stderr" do
-        expect { cli.move }.to output("").to_stdout
+        expect { cli.jump }.to output("").to_stdout
           .and output(/Error: Not in a Git repository/).to_stderr
           .and raise_error(SystemExit)
       end
@@ -252,7 +252,7 @@ RSpec.describe WorktreeManager::CLI do
       end
 
       it "exits with error message to stderr" do
-        expect { cli.move }.to output("").to_stdout
+        expect { cli.jump }.to output("").to_stdout
           .and output(/Error: No worktrees found/).to_stderr
           .and raise_error(SystemExit)
       end
@@ -264,17 +264,17 @@ RSpec.describe WorktreeManager::CLI do
       end
 
       it "outputs worktree path to stdout when found by name" do
-        expect { cli.move("feature") }.to output("/path/to/feature\n").to_stdout
+        expect { cli.jump("feature") }.to output("/path/to/feature\n").to_stdout
           .and output("").to_stderr
       end
 
       it "outputs worktree path to stdout when found by basename" do
-        expect { cli.move("main") }.to output("/path/to/main\n").to_stdout
+        expect { cli.jump("main") }.to output("/path/to/main\n").to_stdout
           .and output("").to_stderr
       end
 
       it "exits with error when worktree not found" do
-        expect { cli.move("nonexistent") }.to output("").to_stdout
+        expect { cli.jump("nonexistent") }.to output("").to_stdout
           .and output(/Error: Worktree 'nonexistent' not found/).to_stderr
           .and raise_error(SystemExit)
       end
@@ -298,7 +298,7 @@ RSpec.describe WorktreeManager::CLI do
         
         allow(prompt).to receive(:select).with("Select a worktree:", expected_choices, per_page: 10).and_return(worktree2)
         
-        expect { cli.move }.to output("/path/to/feature\n").to_stdout
+        expect { cli.jump }.to output("/path/to/feature\n").to_stdout
       end
 
       it "exits when user cancels" do
@@ -309,7 +309,7 @@ RSpec.describe WorktreeManager::CLI do
         
         allow(prompt).to receive(:select).with("Select a worktree:", expected_choices, per_page: 10).and_raise(TTY::Reader::InputInterrupt)
         
-        expect { cli.move }.to output("").to_stdout
+        expect { cli.jump }.to output("").to_stdout
           .and output(/Cancelled/).to_stderr
           .and raise_error(SystemExit) { |error| expect(error.status).to eq(0) }
       end
@@ -320,7 +320,7 @@ RSpec.describe WorktreeManager::CLI do
         end
 
         it "exits with error message" do
-          expect { cli.move }.to output("").to_stdout
+          expect { cli.jump }.to output("").to_stdout
             .and output(/Error: Interactive mode requires a TTY/).to_stderr
             .and raise_error(SystemExit)
         end

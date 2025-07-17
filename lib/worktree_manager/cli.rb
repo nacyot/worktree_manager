@@ -145,8 +145,8 @@ module WorktreeManager
       end
     end
 
-    desc "move [WORKTREE]", "Navigate to a worktree directory"
-    def move(worktree_name = nil)
+    desc "jump [WORKTREE]", "Navigate to a worktree directory"
+    def jump(worktree_name = nil)
       main_repo_path = find_main_repository_path
       if main_repo_path.nil?
         $stderr.puts "Error: Not in a Git repository."
