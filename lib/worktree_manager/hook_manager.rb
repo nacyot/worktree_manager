@@ -92,37 +92,84 @@ module WorktreeManager
       log_debug("📂 Working directory: #{chdir}")
       
       start_time = Time.now
-      # Execute command with environment variables
-      # When environment variables are present, must execute through shell (for shell expansion)
+      status = nil
+      
+      # Execute command with environment variables and stream output
       begin
-        stdout, stderr, status = if env && !env.empty?
+        if env && !env.empty?
           # Verify environment variable is a Hash
           log_debug("🔍 Environment variable type: #{env.class}")
           log_debug("🔍 Environment variable sample: #{env.first(3).to_h}")
-          # Pass chdir option separately
-          options = { chdir: chdir }
-          Open3.capture3(env, "sh", "-c", command, **options)
+          
+          # Use popen3 for streaming output
+          Open3.popen3(env, "sh", "-c", command, chdir: chdir) do |stdin, stdout, stderr, wait_thr|
+            stdin.close
+            
+            # Create threads to read both stdout and stderr concurrently
+            threads = []
+            
+            threads << Thread.new do
+              stdout.each_line do |line|
+                print line
+                STDOUT.flush
+              end
+            end
+            
+            threads << Thread.new do
+              stderr.each_line do |line|
+                STDERR.print line
+                STDERR.flush
+              end
+            end
+            
+            # Wait for all threads to complete
+            threads.each(&:join)
+            
+            # Wait for the process to complete
+            status = wait_thr.value
+          end
         else
-          Open3.capture3(command, chdir: chdir)
+          Open3.popen3(command, chdir: chdir) do |stdin, stdout, stderr, wait_thr|
+            stdin.close
+            
+            # Create threads to read both stdout and stderr concurrently
+            threads = []
+            
+            threads << Thread.new do
+              stdout.each_line do |line|
+                print line
+                STDOUT.flush
+              end
+            end
+            
+            threads << Thread.new do
+              stderr.each_line do |line|
+                STDERR.print line
+                STDERR.flush
+              end
+            end
+            
+            # Wait for all threads to complete
+            threads.each(&:join)
+            
+            # Wait for the process to complete
+            status = wait_thr.value
+          end
         end
       rescue => e
-        log_debug("❌ Open3.capture3 error: #{e.class} - #{e.message}")
+        log_debug("❌ Open3.popen3 error: #{e.class} - #{e.message}")
         raise
       end
-      duration = Time.now - start_time
       
+      duration = Time.now - start_time
       log_debug("⏱️ Execution time: #{(duration * 1000).round(2)}ms")
-      log_debug("📤 Output: #{stdout.strip}") unless stdout.strip.empty?
-      log_debug("⚠️ Error: #{stderr.strip}") unless stderr.strip.empty?
       
       unless status.success?
         puts "Hook failed: #{command}"
-        puts "Error: #{stderr}" unless stderr.empty?
         log_debug("❌ Command execution failed: exit code #{status.exitstatus}")
         return false
       end
       
-      puts stdout unless stdout.empty?
       log_debug("✅ Command executed successfully")
       true
     end
