@@ -1,6 +1,8 @@
+require_relative 'lib/worktree_manager/version'
+
 Gem::Specification.new do |spec|
   spec.name          = "worktree_manager"
-  spec.version       = "0.1.0"
+  spec.version       = WorktreeManager::VERSION
   spec.authors       = ["nacyot"]
   spec.email         = ["propellerheaven@gmail.com"]
 

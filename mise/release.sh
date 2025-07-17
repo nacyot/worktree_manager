@@ -63,21 +63,11 @@ fi
 NEW_VERSION="$MAJOR.$MINOR.$PATCH"
 echo "New version: $NEW_VERSION"
 
-# Build the gem first with current version to ensure it builds successfully
-echo "Testing gem build with current version..."
-if ! gem build worktree_manager.gemspec; then
-    echo "Error: Gem build failed with current version"
-    exit 1
-fi
-echo "Build test successful"
-
-# Test build gem is already cleaned up by initial cleanup
-
-# Update .version file
+# Update .version file FIRST
 echo "$NEW_VERSION" > .version
 
 # Build the gem with new version
-echo "Building gem with new version..."
+echo "Building gem with version $NEW_VERSION..."
 if gem build worktree_manager.gemspec; then
     echo "Gem built successfully: worktree_manager-$NEW_VERSION.gem"
     
