@@ -1,3 +1,3 @@
 module WorktreeManager
-  VERSION = "0.1.0"
+  VERSION = File.read(File.join(File.dirname(__FILE__), '../../.version')).strip
 end
