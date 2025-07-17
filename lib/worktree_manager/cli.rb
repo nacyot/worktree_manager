@@ -186,20 +186,47 @@ module WorktreeManager
       puts target.path
     end
 
-    desc "remove NAME_OR_PATH", "Remove an existing worktree"
+    desc "remove [NAME_OR_PATH]", "Remove an existing worktree"
     method_option :force, aliases: "-f", type: :boolean, desc: "Force removal even if worktree has changes"
-    def remove(name_or_path)
+    method_option :all, type: :boolean, desc: "Remove all worktrees at once"
+    def remove(name_or_path = nil)
       validate_main_repository!
       
-      # Validate input
-      if name_or_path.nil? || name_or_path.strip.empty?
-        puts "Error: Name or path cannot be empty"
-        exit(1)
+      manager = Manager.new
+      
+      # Handle --all option
+      if options[:all]
+        if name_or_path
+          puts "Error: Cannot specify both --all and a specific worktree"
+          exit(1)
+        end
+        
+        worktrees = manager.list
+        if worktrees.empty?
+          puts "Error: No worktrees found."
+          exit(1)
+        end
+        
+        remove_all_worktrees(worktrees)
+        return
       end
       
-      # Load configuration and resolve path
-      config_manager = ConfigManager.new
-      path = config_manager.resolve_worktree_path(name_or_path)
+      # If no argument provided, show interactive selection
+      if name_or_path.nil?
+        worktrees = manager.list
+        
+        if worktrees.empty?
+          puts "Error: No worktrees found."
+          exit(1)
+        end
+        
+        target_worktree = select_worktree_interactive(worktrees)
+        path = target_worktree.path
+      else
+        # Load configuration and resolve path
+        config_manager = ConfigManager.new
+        path = config_manager.resolve_worktree_path(name_or_path)
+      end
       
       # Prevent deletion of main repository
       if File.expand_path(path) == File.expand_path(".")
@@ -207,20 +234,23 @@ module WorktreeManager
         exit(1)
       end
       
-      manager = Manager.new
       hook_manager = HookManager.new(".", verbose: options[:verbose])
       
       # Normalize path
       normalized_path = File.expand_path(path)
       
-      # Find worktree information to remove
-      worktrees = manager.list
-      target_worktree = worktrees.find { |wt| File.expand_path(wt.path) == normalized_path }
-      
-      unless target_worktree
-        puts "Error: Worktree not found at path: #{path}"
-        exit(1)
-        return  # Prevent further execution in test environment
+      # Find worktree information to remove if not already selected
+      if name_or_path.nil?
+        # We already have target_worktree from interactive selection
+      else
+        worktrees = manager.list
+        target_worktree = worktrees.find { |wt| File.expand_path(wt.path) == normalized_path }
+        
+        unless target_worktree
+          puts "Error: Worktree not found at path: #{path}"
+          exit(1)
+          return  # Prevent further execution in test environment
+        end
       end
       
       # Execute pre-remove hook
@@ -269,6 +299,93 @@ module WorktreeManager
         end
         exit(1)
       end
+    end
+    
+    def remove_all_worktrees(worktrees)
+      # Filter out the main repository (first worktree in the list is typically the main repository)
+      # Alternative approach: check if .git is a directory (main repo) vs file (worktree)
+      removable_worktrees = worktrees.reject do |worktree|
+        git_path = File.join(worktree.path, ".git")
+        File.exist?(git_path) && File.directory?(git_path)
+      end
+      
+      if removable_worktrees.empty?
+        puts "No worktrees to remove (only main repository found)."
+        exit(0)
+      end
+      
+      # Show confirmation prompt
+      if interactive_mode_available?
+        prompt = TTY::Prompt.new
+        
+        puts "The following worktrees will be removed:"
+        removable_worktrees.each do |worktree|
+          puts "  - #{worktree.path} (#{worktree.branch || 'detached'})"
+        end
+        puts
+        
+        unless prompt.yes?("Are you sure you want to remove all #{removable_worktrees.size} worktrees?", default: false)
+          puts "Cancelled."
+          exit(0)
+        end
+      else
+        # In non-interactive mode, require --force for safety
+        unless options[:force]
+          puts "Error: Removing all worktrees requires confirmation."
+          puts "Use --force to remove all worktrees without confirmation."
+          exit(1)
+        end
+      end
+      
+      manager = Manager.new
+      hook_manager = HookManager.new(".", verbose: options[:verbose])
+      
+      removed_count = 0
+      failed_count = 0
+      
+      removable_worktrees.each do |worktree|
+        puts "\nRemoving worktree: #{worktree.path}"
+        
+        # Execute pre-remove hook
+        context = {
+          path: worktree.path,
+          branch: worktree.branch,
+          force: options[:force]
+        }
+        
+        unless hook_manager.execute_hook(:pre_remove, context)
+          puts "  Error: pre_remove hook failed. Skipping this worktree."
+          failed_count += 1
+          next
+        end
+        
+        begin
+          # Remove worktree
+          manager.remove(worktree.path, force: options[:force])
+          
+          puts "  Worktree removed: #{worktree.path}"
+          removed_count += 1
+          
+          # Execute post-remove hook
+          context[:success] = true
+          hook_manager.execute_hook(:post_remove, context)
+          
+        rescue WorktreeManager::Error => e
+          puts "  Error: #{e.message}"
+          failed_count += 1
+          
+          # Execute post-remove hook with error context on failure
+          context[:success] = false
+          context[:error] = e.message
+          hook_manager.execute_hook(:post_remove, context)
+        end
+      end
+      
+      puts "\nSummary:"
+      puts "  Removed: #{removed_count} worktrees"
+      puts "  Failed: #{failed_count} worktrees" if failed_count > 0
+      
+      exit(failed_count > 0 ? 1 : 0)
     end
 
     def validate_no_conflicts!(path, branch_name)
