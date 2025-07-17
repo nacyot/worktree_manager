@@ -293,6 +293,34 @@ module WorktreeManager
       rescue WorktreeManager::Error => e
         puts "Error: #{e.message}"
         
+        # Check if error is due to modified/untracked files and offer force removal
+        if e.message.include?("contains modified or untracked files") && 
+           !options[:force] && 
+           interactive_mode_available?
+          
+          prompt = TTY::Prompt.new
+          if prompt.yes?("\nWould you like to force remove the worktree? This will delete all uncommitted changes.", default: false)
+            begin
+              # Retry with force option
+              manager.remove(path, force: true)
+              puts "Worktree removed: #{target_worktree.path}"
+              
+              # Execute post-remove hook with success
+              unless options[:no_hooks]
+                context[:success] = true
+                hook_manager.execute_hook(:post_remove, context)
+              end
+              
+              return # Successfully removed with force
+            rescue WorktreeManager::Error => force_error
+              puts "Error: #{force_error.message}"
+              # Fall through to regular error handling
+            end
+          else
+            puts "Removal cancelled."
+          end
+        end
+        
         # Execute post-remove hook with error context on failure
         unless options[:no_hooks]
           context[:success] = false
@@ -361,6 +389,8 @@ module WorktreeManager
       
       removed_count = 0
       failed_count = 0
+      failed_worktrees = []
+      force_removable_worktrees = []
       
       removable_worktrees.each do |worktree|
         puts "\nRemoving worktree: #{worktree.path}"
@@ -396,6 +426,12 @@ module WorktreeManager
         rescue WorktreeManager::Error => e
           puts "  Error: #{e.message}"
           failed_count += 1
+          failed_worktrees << worktree
+          
+          # Track worktrees that can be force removed
+          if e.message.include?("contains modified or untracked files")
+            force_removable_worktrees << worktree
+          end
           
           # Execute post-remove hook with error context on failure
           unless options[:no_hooks]
@@ -409,6 +445,50 @@ module WorktreeManager
       puts "\nSummary:"
       puts "  Removed: #{removed_count} worktrees"
       puts "  Failed: #{failed_count} worktrees" if failed_count > 0
+      
+      # Offer force removal for worktrees with uncommitted changes
+      if force_removable_worktrees.any? && !options[:force] && interactive_mode_available?
+        puts "\nThe following worktrees contain uncommitted changes:"
+        force_removable_worktrees.each do |worktree|
+          puts "  - #{worktree.path} (#{worktree.branch || 'detached'})"
+        end
+        
+        prompt = TTY::Prompt.new
+        if prompt.yes?("\nWould you like to force remove these worktrees? This will delete all uncommitted changes.", default: false)
+          puts "\nForce removing worktrees with uncommitted changes..."
+          
+          force_removable_worktrees.each do |worktree|
+            puts "\nRemoving worktree: #{worktree.path}"
+            
+            begin
+              # Remove with force
+              manager.remove(worktree.path, force: true)
+              
+              puts "  Worktree removed: #{worktree.path}"
+              removed_count += 1
+              failed_count -= 1
+              
+              # Execute post-remove hook
+              unless options[:no_hooks]
+                context = {
+                  path: worktree.path,
+                  branch: worktree.branch,
+                  force: true,
+                  success: true
+                }
+                hook_manager.execute_hook(:post_remove, context)
+              end
+              
+            rescue WorktreeManager::Error => e
+              puts "  Error: #{e.message}"
+            end
+          end
+          
+          puts "\nUpdated Summary:"
+          puts "  Removed: #{removed_count} worktrees"
+          puts "  Failed: #{failed_count} worktrees" if failed_count > 0
+        end
+      end
       
       exit(failed_count > 0 ? 1 : 0)
     end

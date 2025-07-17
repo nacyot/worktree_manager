@@ -504,6 +504,74 @@ RSpec.describe WorktreeManager::CLI do
             .and raise_error(SystemExit)
         end
       end
+      
+      context "when removal fails due to uncommitted changes" do
+        before do
+          allow(manager).to receive(:list).and_return([worktree])
+          allow(hook_manager).to receive(:execute_hook).and_return(true)
+          allow(cli).to receive(:interactive_mode_available?).and_return(true)
+        end
+        
+        it "prompts for force removal and retries when user confirms" do
+          prompt = instance_double(TTY::Prompt)
+          allow(TTY::Prompt).to receive(:new).and_return(prompt)
+          
+          # First attempt fails
+          allow(manager).to receive(:remove).with("/test/path", force: nil)
+            .and_raise(WorktreeManager::Error, "fatal: '/test/path' contains modified or untracked files, use --force to delete it")
+          
+          # User confirms force removal
+          allow(prompt).to receive(:yes?).and_return(true)
+          
+          # Second attempt succeeds with force
+          allow(manager).to receive(:remove).with("/test/path", force: true)
+          
+          expect { cli.remove("/test/path") }.to output(/Error:.*contains modified or untracked files.*Worktree removed/m).to_stdout
+          
+          expect(manager).to have_received(:remove).with("/test/path", force: nil).once
+          expect(manager).to have_received(:remove).with("/test/path", force: true).once
+        end
+        
+        it "cancels removal when user declines force removal" do
+          prompt = instance_double(TTY::Prompt)
+          allow(TTY::Prompt).to receive(:new).and_return(prompt)
+          
+          # First attempt fails
+          allow(manager).to receive(:remove).with("/test/path", force: nil)
+            .and_raise(WorktreeManager::Error, "fatal: '/test/path' contains modified or untracked files, use --force to delete it")
+          
+          # User declines force removal
+          allow(prompt).to receive(:yes?).and_return(false)
+          
+          expect { cli.remove("/test/path") }.to output(/Error:.*contains modified or untracked files.*Removal cancelled/m).to_stdout
+            .and raise_error(SystemExit)
+          
+          expect(manager).to have_received(:remove).with("/test/path", force: nil).once
+          expect(manager).not_to have_received(:remove).with("/test/path", force: true)
+        end
+        
+        it "does not prompt when force option is already set" do
+          allow(manager).to receive(:remove).with("/test/path", force: true)
+          allow(TTY::Prompt).to receive(:new).and_call_original
+          
+          cli.invoke(:remove, ["/test/path"], { force: true })
+          
+          expect(TTY::Prompt).not_to have_received(:new)
+        end
+        
+        it "does not prompt in non-interactive mode" do
+          allow(cli).to receive(:interactive_mode_available?).and_return(false)
+          allow(TTY::Prompt).to receive(:new).and_call_original
+          
+          allow(manager).to receive(:remove).with("/test/path", force: nil)
+            .and_raise(WorktreeManager::Error, "fatal: '/test/path' contains modified or untracked files, use --force to delete it")
+          
+          expect { cli.remove("/test/path") }.to output(/Error:.*contains modified or untracked files/m).to_stdout
+            .and raise_error(SystemExit)
+          
+          expect(TTY::Prompt).not_to have_received(:new)
+        end
+      end
     end
   end
 
