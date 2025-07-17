@@ -180,6 +180,108 @@ RSpec.describe WorktreeManager::CLI do
     end
   end
 
+  describe "#move" do
+    let(:manager) { instance_double(WorktreeManager::Manager) }
+    let(:worktree1) { instance_double(WorktreeManager::Worktree, path: "/path/to/main", branch: "main") }
+    let(:worktree2) { instance_double(WorktreeManager::Worktree, path: "/path/to/feature", branch: "feature") }
+    let(:main_repo_path) { "/path/to/main" }
+
+    before do
+      allow(cli).to receive(:find_main_repository_path).and_return(main_repo_path)
+      allow(WorktreeManager::Manager).to receive(:new).with(main_repo_path).and_return(manager)
+    end
+
+    context "when not in a git repository" do
+      before do
+        allow(cli).to receive(:find_main_repository_path).and_return(nil)
+      end
+
+      it "exits with error message to stderr" do
+        expect { cli.move }.to output("").to_stdout
+          .and output(/Error: Not in a Git repository/).to_stderr
+          .and raise_error(SystemExit)
+      end
+    end
+
+    context "when no worktrees exist" do
+      before do
+        allow(manager).to receive(:list).and_return([])
+      end
+
+      it "exits with error message to stderr" do
+        expect { cli.move }.to output("").to_stdout
+          .and output(/Error: No worktrees found/).to_stderr
+          .and raise_error(SystemExit)
+      end
+    end
+
+    context "with worktree name argument" do
+      before do
+        allow(manager).to receive(:list).and_return([worktree1, worktree2])
+      end
+
+      it "outputs worktree path to stdout when found by name" do
+        expect { cli.move("feature") }.to output("/path/to/feature\n").to_stdout
+          .and output("").to_stderr
+      end
+
+      it "outputs worktree path to stdout when found by basename" do
+        expect { cli.move("main") }.to output("/path/to/main\n").to_stdout
+          .and output("").to_stderr
+      end
+
+      it "exits with error when worktree not found" do
+        expect { cli.move("nonexistent") }.to output("").to_stdout
+          .and output(/Error: Worktree 'nonexistent' not found/).to_stderr
+          .and raise_error(SystemExit)
+      end
+    end
+
+    context "without argument (interactive mode)" do
+      before do
+        allow(manager).to receive(:list).and_return([worktree1, worktree2])
+        allow($stdin).to receive(:tty?).and_return(true)
+        allow($stderr).to receive(:tty?).and_return(true)
+        allow(Dir).to receive(:pwd).and_return("/path/to/feature")
+      end
+
+      it "shows interactive selection and outputs selected path" do
+        allow($stdin).to receive(:gets).and_return("2\n")
+        
+        expect { cli.move }.to output("/path/to/feature\n").to_stdout
+          .and output(/Select a worktree:.*1\. main.*2\. feature.*current/m).to_stderr
+      end
+
+      it "exits when user cancels" do
+        allow($stdin).to receive(:gets).and_return("\n")
+        
+        expect { cli.move }.to output("").to_stdout
+          .and output(/Cancelled/).to_stderr
+          .and raise_error(SystemExit) { |error| expect(error.status).to eq(0) }
+      end
+
+      it "exits with error on invalid selection" do
+        allow($stdin).to receive(:gets).and_return("99\n")
+        
+        expect { cli.move }.to output("").to_stdout
+          .and output(/Error: Invalid selection/).to_stderr
+          .and raise_error(SystemExit) { |error| expect(error.status).to eq(1) }
+      end
+
+      context "when not in TTY" do
+        before do
+          allow($stdin).to receive(:tty?).and_return(false)
+        end
+
+        it "exits with error message" do
+          expect { cli.move }.to output("").to_stdout
+            .and output(/Error: Interactive mode requires a TTY/).to_stderr
+            .and raise_error(SystemExit)
+        end
+      end
+    end
+  end
+
   describe "#remove" do
     let(:manager) { instance_double(WorktreeManager::Manager) }
     let(:hook_manager) { instance_double(WorktreeManager::HookManager) }

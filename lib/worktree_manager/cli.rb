@@ -116,6 +116,47 @@ module WorktreeManager
       end
     end
 
+    desc "move [WORKTREE]", "Navigate to a worktree directory"
+    def move(worktree_name = nil)
+      main_repo_path = find_main_repository_path
+      if main_repo_path.nil?
+        $stderr.puts "Error: Not in a Git repository."
+        exit(1)
+      end
+      
+      manager = Manager.new(main_repo_path)
+      worktrees = manager.list
+      
+      if worktrees.empty?
+        $stderr.puts "Error: No worktrees found."
+        exit(1)
+      end
+      
+      # If no argument provided, show interactive selection
+      if worktree_name.nil?
+        target = select_worktree_interactive(worktrees)
+      else
+        # Find worktree by name or path
+        target = worktrees.find do |w|
+          w.path.include?(worktree_name) || 
+          (w.branch && w.branch.include?(worktree_name)) ||
+          File.basename(w.path) == worktree_name
+        end
+        
+        if target.nil?
+          $stderr.puts "Error: Worktree '#{worktree_name}' not found."
+          $stderr.puts "\nAvailable worktrees:"
+          worktrees.each do |w|
+            $stderr.puts "  - #{File.basename(w.path)} (#{w.branch || 'detached'})"
+          end
+          exit(1)
+        end
+      end
+      
+      # Output only the path to stdout for cd command
+      puts target.path
+    end
+
     desc "remove PATH", "Remove an existing worktree"
     method_option :force, aliases: "-f", type: :boolean, desc: "Force removal even if worktree has changes"
     def remove(path)
@@ -268,6 +309,50 @@ module WorktreeManager
       else
         false
       end
+    end
+    
+    def select_worktree_interactive(worktrees)
+      # Check if running in interactive mode
+      unless $stdin.tty? && $stderr.tty?
+        $stderr.puts "Error: Interactive mode requires a TTY. Please specify a worktree name."
+        exit(1)
+      end
+      
+      # Display worktrees with numbers
+      $stderr.puts "Select a worktree:"
+      $stderr.puts
+      
+      # Get current directory to highlight current worktree
+      current_path = Dir.pwd
+      
+      worktrees.each_with_index do |worktree, index|
+        is_current = File.expand_path(current_path).start_with?(File.expand_path(worktree.path))
+        marker = is_current ? " (current)" : ""
+        branch_info = worktree.branch || "detached"
+        
+        $stderr.puts "  #{index + 1}. #{File.basename(worktree.path)} - #{branch_info}#{marker}"
+        $stderr.puts "     #{worktree.path}"
+      end
+      
+      $stderr.puts
+      $stderr.print "Enter number (1-#{worktrees.length}): "
+      
+      # Read user input
+      input = $stdin.gets&.strip
+      
+      # Validate input
+      if input.nil? || input.empty?
+        $stderr.puts "\nCancelled."
+        exit(0)
+      end
+      
+      selection = input.to_i
+      if selection < 1 || selection > worktrees.length
+        $stderr.puts "\nError: Invalid selection."
+        exit(1)
+      end
+      
+      worktrees[selection - 1]
     end
     
     def find_main_repository_path
