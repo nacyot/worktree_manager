@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    worktree_manager (0.1.4)
+    worktree_manager (0.1.5)
       thor (~> 1.0)
       tty-prompt (~> 0.23)
 
