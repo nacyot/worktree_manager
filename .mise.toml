@@ -1,0 +1,9 @@
+[tools]
+ruby = "3.4.5"
+
+[env]
+_.file = [".env", ".env.local"]
+
+[tasks.release]
+run = "bash mise/release.sh"
+description = "Release a new version of the gem"
