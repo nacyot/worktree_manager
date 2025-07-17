@@ -215,12 +215,15 @@ module WorktreeManager
       if name_or_path.nil?
         worktrees = manager.list
         
-        if worktrees.empty?
-          puts "Error: No worktrees found."
+        # Filter out main repository
+        removable_worktrees = worktrees.reject { |worktree| is_main_repository?(worktree.path) }
+        
+        if removable_worktrees.empty?
+          puts "Error: No removable worktrees found (only main repository exists)."
           exit(1)
         end
         
-        target_worktree = select_worktree_interactive(worktrees)
+        target_worktree = select_worktree_interactive(removable_worktrees)
         path = target_worktree.path
       else
         # Load configuration and resolve path
@@ -229,8 +232,8 @@ module WorktreeManager
       end
       
       # Prevent deletion of main repository
-      if File.expand_path(path) == File.expand_path(".")
-        puts "Error: Cannot remove the main repository itself"
+      if is_main_repository?(path)
+        puts "Error: Cannot remove the main repository"
         exit(1)
       end
       
@@ -289,6 +292,12 @@ module WorktreeManager
 
     private
 
+    def is_main_repository?(path)
+      # Main repository has .git as a directory, worktrees have .git as a file
+      git_path = File.join(path, ".git")
+      File.exist?(git_path) && File.directory?(git_path)
+    end
+
     def validate_main_repository!
       unless main_repository?
         main_repo_path = find_main_repository_path
@@ -302,12 +311,8 @@ module WorktreeManager
     end
     
     def remove_all_worktrees(worktrees)
-      # Filter out the main repository (first worktree in the list is typically the main repository)
-      # Alternative approach: check if .git is a directory (main repo) vs file (worktree)
-      removable_worktrees = worktrees.reject do |worktree|
-        git_path = File.join(worktree.path, ".git")
-        File.exist?(git_path) && File.directory?(git_path)
-      end
+      # Filter out the main repository
+      removable_worktrees = worktrees.reject { |worktree| is_main_repository?(worktree.path) }
       
       if removable_worktrees.empty?
         puts "No worktrees to remove (only main repository found)."
