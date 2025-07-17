@@ -5,8 +5,8 @@ module WorktreeManager
   class HookManager
     HOOK_TYPES = %w[pre_add post_add pre_remove post_remove].freeze
     DEFAULT_HOOK_FILES = [
-      ".worktree_hooks.yml",
-      ".git/worktree_hooks.yml"
+      ".worktree.yml",
+      ".git/.worktree.yml"
     ].freeze
 
     def initialize(repository_path = ".", verbose: false)
@@ -16,7 +16,7 @@ module WorktreeManager
     end
 
     def execute_hook(hook_type, context = {})
-      log_debug("🪝 Hook 실행 시작: #{hook_type}")
+      log_debug("🪝 Starting hook execution: #{hook_type}")
       
       return true unless HOOK_TYPES.include?(hook_type.to_s)
       return true unless @hooks.key?(hook_type.to_s)
@@ -24,21 +24,21 @@ module WorktreeManager
       hook_config = @hooks[hook_type.to_s]
       return true if hook_config.nil? || hook_config.empty?
 
-      log_debug("📋 Hook 설정: #{hook_config.inspect}")
-      log_debug("🔧 컨텍스트: #{context.inspect}")
+      log_debug("📋 Hook configuration: #{hook_config.inspect}")
+      log_debug("🔧 Context: #{context.inspect}")
 
       result = case hook_config
       when String
-        execute_command(hook_config, context)
+        execute_command(hook_config, context, hook_type)
       when Array
-        hook_config.all? { |command| execute_command(command, context) }
+        hook_config.all? { |command| execute_command(command, context, hook_type) }
       when Hash
-        execute_hook_hash(hook_config, context)
+        execute_hook_hash(hook_config, context, hook_type)
       else
         true
       end
 
-      log_debug("✅ Hook 실행 완료: #{hook_type} (결과: #{result})")
+      log_debug("✅ Hook execution completed: #{hook_type} (result: #{result})")
       result
     end
 
@@ -59,7 +59,14 @@ module WorktreeManager
       return {} unless hook_file
 
       begin
-        YAML.load_file(hook_file) || {}
+        config = YAML.load_file(hook_file) || {}
+        # Support new structure: read configuration under hooks key
+        if config.key?("hooks")
+          config["hooks"]
+        else
+          # Support top-level keys for backward compatibility
+          config
+        end
       rescue => e
         puts "Warning: Failed to load hook file #{hook_file}: #{e.message}"
         {}
@@ -74,59 +81,135 @@ module WorktreeManager
       nil
     end
 
-    def execute_command(command, context)
-      log_debug("🚀 명령어 실행: #{command}")
+    def execute_command(command, context, hook_type = nil, working_dir = nil)
+      log_debug("🚀 Executing command: #{command}")
       
       env = build_env_vars(context)
-      log_debug("🌍 환경 변수: #{env.select { |k, _| k.start_with?('WORKTREE_') }}")
+      log_debug("🌍 Environment variables: #{env.select { |k, _| k.start_with?('WORKTREE_') }}")
+      
+      # Determine working directory
+      chdir = working_dir || default_working_directory(hook_type, context)
+      log_debug("📂 Working directory: #{chdir}")
       
       start_time = Time.now
-      stdout, stderr, status = Open3.capture3(env, command, chdir: @repository_path)
+      # Execute command with environment variables
+      # When environment variables are present, must execute through shell (for shell expansion)
+      begin
+        stdout, stderr, status = if env && !env.empty?
+          # Verify environment variable is a Hash
+          log_debug("🔍 Environment variable type: #{env.class}")
+          log_debug("🔍 Environment variable sample: #{env.first(3).to_h}")
+          # Pass chdir option separately
+          options = { chdir: chdir }
+          Open3.capture3(env, "sh", "-c", command, **options)
+        else
+          Open3.capture3(command, chdir: chdir)
+        end
+      rescue => e
+        log_debug("❌ Open3.capture3 error: #{e.class} - #{e.message}")
+        raise
+      end
       duration = Time.now - start_time
       
-      log_debug("⏱️ 실행 시간: #{(duration * 1000).round(2)}ms")
-      log_debug("📤 출력: #{stdout.strip}") unless stdout.strip.empty?
-      log_debug("⚠️ 에러: #{stderr.strip}") unless stderr.strip.empty?
+      log_debug("⏱️ Execution time: #{(duration * 1000).round(2)}ms")
+      log_debug("📤 Output: #{stdout.strip}") unless stdout.strip.empty?
+      log_debug("⚠️ Error: #{stderr.strip}") unless stderr.strip.empty?
       
       unless status.success?
         puts "Hook failed: #{command}"
         puts "Error: #{stderr}" unless stderr.empty?
-        log_debug("❌ 명령어 실행 실패: exit code #{status.exitstatus}")
+        log_debug("❌ Command execution failed: exit code #{status.exitstatus}")
         return false
       end
       
       puts stdout unless stdout.empty?
-      log_debug("✅ 명령어 실행 성공")
+      log_debug("✅ Command executed successfully")
       true
     end
 
-    def execute_hook_hash(hook_config, context)
-      command = hook_config["command"] || hook_config[:command]
-      return true unless command
-
+    def execute_hook_hash(hook_config, context, hook_type)
+      # Support new structure
+      commands = hook_config["commands"] || hook_config[:commands]
+      single_command = hook_config["command"] || hook_config[:command]
+      pwd = hook_config["pwd"] || hook_config[:pwd]
       stop_on_error = hook_config.fetch("stop_on_error", true)
-      result = execute_command(command, context)
       
-      if !result && stop_on_error
-        return false
+      # Substitute environment variables if pwd is set
+      if pwd
+        pwd = pwd.gsub(/\$([A-Z_]+)/) do |match|
+          var_name = $1
+          # First look for environment variables
+          if var_name == "WORKTREE_ABSOLUTE_PATH" && context[:path]
+            path = context[:path]
+            path.start_with?("/") ? path : File.expand_path(path, @repository_path)
+          elsif var_name == "WORKTREE_MAIN" || var_name == "WORKTREE_MANAGER_ROOT"
+            @repository_path
+          elsif var_name.start_with?("WORKTREE_")
+            context_key = var_name.sub("WORKTREE_", "").downcase.to_sym
+            context[context_key]
+          else
+            ENV[var_name] || match
+          end
+        end
       end
       
-      true
+      if commands && commands.is_a?(Array)
+        # Process commands array
+        commands.each do |cmd|
+          result = execute_command(cmd, context, hook_type, pwd)
+          return false if !result && stop_on_error
+        end
+        true
+      elsif single_command
+        # Process single command (backward compatibility)
+        execute_command(single_command, context, hook_type, pwd)
+      else
+        true
+      end
     end
 
     def build_env_vars(context)
-      env = ENV.to_h
+      # Copy only necessary environment variables instead of ENV.to_h
+      env = {}
       
-      # 기본 환경 변수
+      # Copy only basic environment variables (PATH, etc.)
+      %w[PATH HOME USER SHELL].each do |key|
+        env[key] = ENV[key] if ENV[key]
+      end
+      
+      # Default environment variables
       env["WORKTREE_MANAGER_ROOT"] = @repository_path
+      env["WORKTREE_MAIN"] = @repository_path  # Main repository path
       
-      # 컨텍스트 기반 환경 변수
+      # Context-based environment variables
       context.each do |key, value|
         env_key = "WORKTREE_#{key.to_s.upcase}"
         env[env_key] = value.to_s
       end
       
+      # Add worktree absolute path
+      if context[:path]
+        path = context[:path]
+        abs_path = path.start_with?("/") ? path : File.expand_path(path, @repository_path)
+        env["WORKTREE_ABSOLUTE_PATH"] = abs_path
+      end
+      
       env
+    end
+
+    def default_working_directory(hook_type, context)
+      # post_add and pre_remove run in worktree directory by default
+      if ["post_add", "pre_remove"].include?(hook_type.to_s) && context[:path]
+        # Convert relative path to absolute path
+        path = context[:path]
+        if path.start_with?("/")
+          path
+        else
+          File.expand_path(path, @repository_path)
+        end
+      else
+        @repository_path
+      end
     end
 
     def log_debug(message)

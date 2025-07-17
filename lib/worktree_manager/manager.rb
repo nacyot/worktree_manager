@@ -26,7 +26,7 @@ module WorktreeManager
       output, status = execute_git_command(command.join(" "))
       raise Error, output unless status.success?
 
-      # 생성된 worktree 정보 반환
+      # Return created worktree information
       worktree_info = { path: path }
       worktree_info[:branch] = branch if branch
       Worktree.new(worktree_info)
@@ -41,7 +41,7 @@ module WorktreeManager
       output, status = execute_git_command(command.join(" "))
       raise Error, output unless status.success?
 
-      # 생성된 worktree 정보 반환
+      # Return created worktree information
       Worktree.new(path: path, branch: branch)
     end
 

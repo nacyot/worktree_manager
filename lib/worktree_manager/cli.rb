@@ -35,28 +35,28 @@ module WorktreeManager
     def add(path, branch = nil)
       validate_main_repository!
       
-      # 입력값 검증
+      # Validate input
       if path.nil? || path.strip.empty?
         puts "Error: Path cannot be empty"
         exit(1)
       end
       
-      # 옵션에서 브랜치명 가져오기 (인수보다 옵션 우선)
+      # Get branch name from options (options take precedence over arguments)
       target_branch = options[:branch] || branch
       
-      # 브랜치명 검증
+      # Validate branch name
       if target_branch && !valid_branch_name?(target_branch)
         puts "Error: Invalid branch name '#{target_branch}'. Branch names cannot contain spaces or special characters."
         exit(1)
       end
       
-      # 기존 워크트리와의 충돌 확인
+      # Check for conflicts with existing worktrees
       validate_no_conflicts!(path, target_branch)
       
       manager = Manager.new
       hook_manager = HookManager.new(".", verbose: options[:verbose])
       
-      # Pre-add hook 실행
+      # Execute pre-add hook
       context = {
         path: path,
         branch: target_branch,
@@ -69,13 +69,13 @@ module WorktreeManager
       end
       
       begin
-        # Worktree 생성
+        # Create worktree
         if target_branch
           if options[:branch]
-            # 새 브랜치 생성
+            # Create new branch
             result = manager.add_with_new_branch(path, target_branch, force: options[:force])
           else
-            # 기존 브랜치 사용
+            # Use existing branch
             result = manager.add(path, target_branch, force: options[:force])
           end
         else
@@ -84,14 +84,14 @@ module WorktreeManager
         
         puts "Worktree created: #{result.path} (#{result.branch || 'detached'})"
         
-        # Post-add hook 실행
+        # Execute post-add hook
         context[:success] = true
         hook_manager.execute_hook(:post_add, context)
         
       rescue WorktreeManager::Error => e
         puts "Error: #{e.message}"
         
-        # 실패 시 post-add hook을 에러 컨텍스트로 실행
+        # Execute post-add hook with error context on failure
         context[:success] = false
         context[:error] = e.message
         hook_manager.execute_hook(:post_add, context)
@@ -105,13 +105,13 @@ module WorktreeManager
     def remove(path)
       validate_main_repository!
       
-      # 입력값 검증
+      # Validate input
       if path.nil? || path.strip.empty?
         puts "Error: Path cannot be empty"
         exit(1)
       end
       
-      # 메인 저장소 삭제 방지
+      # Prevent deletion of main repository
       if File.expand_path(path) == File.expand_path(".")
         puts "Error: Cannot remove the main repository itself"
         exit(1)
@@ -120,10 +120,10 @@ module WorktreeManager
       manager = Manager.new
       hook_manager = HookManager.new(".", verbose: options[:verbose])
       
-      # 경로 정규화
+      # Normalize path
       normalized_path = File.expand_path(path)
       
-      # 삭제할 worktree 정보 조회
+      # Find worktree information to remove
       worktrees = manager.list
       target_worktree = worktrees.find { |wt| File.expand_path(wt.path) == normalized_path }
       
@@ -132,7 +132,7 @@ module WorktreeManager
         exit(1)
       end
       
-      # Pre-remove hook 실행
+      # Execute pre-remove hook
       context = {
         path: target_worktree.path,
         branch: target_worktree.branch,
@@ -145,19 +145,19 @@ module WorktreeManager
       end
       
       begin
-        # Worktree 삭제
+        # Remove worktree
         manager.remove(path, force: options[:force])
         
         puts "Worktree removed: #{target_worktree.path}"
         
-        # Post-remove hook 실행
+        # Execute post-remove hook
         context[:success] = true
         hook_manager.execute_hook(:post_remove, context)
         
       rescue WorktreeManager::Error => e
         puts "Error: #{e.message}"
         
-        # 실패 시 post-remove hook을 에러 컨텍스트로 실행
+        # Execute post-remove hook with error context on failure
         context[:success] = false
         context[:error] = e.message
         hook_manager.execute_hook(:post_remove, context)
@@ -178,7 +178,7 @@ module WorktreeManager
     def validate_no_conflicts!(path, branch_name)
       manager = Manager.new
       
-      # 경로 충돌 확인
+      # Check for path conflicts
       normalized_path = File.expand_path(path)
       existing_worktrees = manager.list
       
@@ -191,7 +191,7 @@ module WorktreeManager
         end
       end
       
-      # 브랜치 충돌 확인 (새 브랜치 생성 시가 아닌 경우)
+      # Check for branch conflicts (when not creating a new branch)
       if branch_name && !options[:branch]
         existing_branch = existing_worktrees.find { |wt| wt.branch == branch_name }
         if existing_branch
@@ -202,7 +202,7 @@ module WorktreeManager
         end
       end
       
-      # 새 브랜치 생성 시 브랜치명 중복 확인
+      # Check for branch name duplication when creating new branch
       if options[:branch]
         output, status = Open3.capture2e("git", "branch", "--list", branch_name)
         if status.success? && !output.strip.empty?
@@ -212,7 +212,7 @@ module WorktreeManager
         end
       end
       
-      # 디렉터리 존재 확인 (force 옵션이 없는 경우)
+      # Check directory existence (when force option is not used)
       if !options[:force] && Dir.exist?(normalized_path) && !Dir.empty?(normalized_path)
         puts "Error: Directory '#{path}' already exists and is not empty"
         puts "  Use --force to override or choose a different path"
@@ -223,13 +223,13 @@ module WorktreeManager
     def valid_branch_name?(branch_name)
       return false if branch_name.nil? || branch_name.strip.empty?
       
-      # 기본적인 Git 브랜치명 규칙 확인
+      # Check basic Git branch name rules
       invalid_patterns = [
-        /\s/,           # 공백 포함
-        /\.\./,         # 연속된 점
-        /^[\.\-]/,      # 점이나 대시로 시작
-        /[\.\-]$/,      # 점이나 대시로 끝남
-        /[~^:?*\[\]\\]/ # 특수 문자
+        /\s/,           # Contains spaces
+        /\.\./,         # Consecutive dots
+        /^[\.\-]/,      # Starts with dot or dash
+        /[\.\-]$/,      # Ends with dot or dash
+        /[~^:?*\[\]\\]/ # Special characters
       ]
       
       invalid_patterns.none? { |pattern| branch_name.match?(pattern) }
