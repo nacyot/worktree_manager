@@ -15,9 +15,22 @@ module WorktreeManager
 
     desc "list", "List all worktrees"
     def list
-      validate_main_repository!
+      # list command can be used from worktree
+      main_repo_path = find_main_repository_path
+      if main_repo_path.nil?
+        puts "Error: Not in a Git repository."
+        exit(1)
+      end
       
-      manager = Manager.new
+      # Show main repository path if running from a worktree
+      unless main_repository?
+        puts "Running from worktree. Main repository: #{main_repo_path}"
+        puts "To enter the main repository, run:"
+        puts "  cd #{main_repo_path}"
+        puts
+      end
+      
+      manager = Manager.new(main_repo_path)
       worktrees = manager.list
       
       if worktrees.empty?
@@ -83,9 +96,12 @@ module WorktreeManager
         end
         
         puts "Worktree created: #{result.path} (#{result.branch || 'detached'})"
+        puts "\nTo enter the worktree, run:"
+        puts "  cd #{result.path}"
         
         # Execute post-add hook
         context[:success] = true
+        context[:worktree_path] = result.path
         hook_manager.execute_hook(:post_add, context)
         
       rescue WorktreeManager::Error => e
@@ -170,7 +186,12 @@ module WorktreeManager
 
     def validate_main_repository!
       unless main_repository?
+        main_repo_path = find_main_repository_path
         puts "Error: This command can only be run from the main Git repository (not from a worktree)."
+        if main_repo_path
+          puts "To enter the main repository, run:"
+          puts "  cd #{main_repo_path}"
+        end
         exit(1)
       end
     end
@@ -246,6 +267,42 @@ module WorktreeManager
         !git_content.start_with?("gitdir:")
       else
         false
+      end
+    end
+    
+    def find_main_repository_path
+      # Try to find the main repository path using git command
+      output, _, status = Open3.capture3("git rev-parse --path-format=absolute --git-common-dir")
+      
+      if status.success?
+        git_common_dir = output.strip
+        return nil if git_common_dir.empty?
+        
+        # If it ends with .git, get parent directory
+        if git_common_dir.end_with?("/.git")
+          return File.dirname(git_common_dir)
+        else
+          # In some cases, git-common-dir might return the directory itself
+          # Check if this is the main repository
+          test_dir = git_common_dir.end_with?(".git") ? File.dirname(git_common_dir) : git_common_dir
+          git_file = File.join(test_dir, ".git")
+          
+          if File.exist?(git_file) && File.directory?(git_file)
+            return test_dir
+          end
+        end
+      end
+      
+      # Fallback: try to get worktree list from current directory
+      output, _, status = Open3.capture3("git worktree list --porcelain")
+      return nil unless status.success?
+      
+      # First line should be the main worktree
+      first_line = output.lines.first
+      if first_line && first_line.start_with?("worktree ")
+        first_line.sub("worktree ", "").strip
+      else
+        nil
       end
     end
   end
