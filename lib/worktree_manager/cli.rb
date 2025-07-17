@@ -4,6 +4,7 @@ require "tty-prompt"
 require_relative "version"
 require_relative "manager"
 require_relative "hook_manager"
+require_relative "config_manager"
 
 module WorktreeManager
   class CLI < Thor
@@ -43,20 +44,44 @@ module WorktreeManager
       end
     end
 
-    desc "add PATH [BRANCH]", "Create a new worktree"
+    desc "add NAME_OR_PATH [BRANCH]", "Create a new worktree"
     method_option :branch, aliases: "-b", desc: "Create a new branch for the worktree"
+    method_option :track, aliases: "-t", desc: "Track a remote branch"
     method_option :force, aliases: "-f", type: :boolean, desc: "Force creation even if directory exists"
-    def add(path, branch = nil)
+    def add(name_or_path, branch = nil)
       validate_main_repository!
       
       # Validate input
-      if path.nil? || path.strip.empty?
-        puts "Error: Path cannot be empty"
+      if name_or_path.nil? || name_or_path.strip.empty?
+        puts "Error: Name or path cannot be empty"
         exit(1)
       end
       
+      # Load configuration and resolve path
+      config_manager = ConfigManager.new
+      path = config_manager.resolve_worktree_path(name_or_path)
+      
       # Get branch name from options (options take precedence over arguments)
       target_branch = options[:branch] || branch
+      
+      # Handle remote branch tracking
+      remote_branch = nil
+      if options[:track]
+        remote_branch = options[:track]
+        # If --track is used without specifying remote branch, use branch argument
+        remote_branch = branch if remote_branch == true && branch
+        
+        # If target_branch is not set, derive it from remote branch
+        if !target_branch && remote_branch
+          # Extract branch name from remote (e.g., origin/feature -> feature)
+          target_branch = remote_branch.split('/', 2).last
+        end
+      elsif branch && branch.include?('/')
+        # Auto-detect remote branch (e.g., origin/feature)
+        remote_branch = branch
+        # Override target_branch for auto-detected remote branches
+        target_branch = branch.split('/', 2).last
+      end
       
       # Validate branch name
       if target_branch && !valid_branch_name?(target_branch)
@@ -84,7 +109,10 @@ module WorktreeManager
       
       begin
         # Create worktree
-        if target_branch
+        if remote_branch
+          # Track remote branch
+          result = manager.add_tracking_branch(path, target_branch, remote_branch, force: options[:force])
+        elsif target_branch
           if options[:branch]
             # Create new branch
             result = manager.add_with_new_branch(path, target_branch, force: options[:force])
@@ -158,16 +186,20 @@ module WorktreeManager
       puts target.path
     end
 
-    desc "remove PATH", "Remove an existing worktree"
+    desc "remove NAME_OR_PATH", "Remove an existing worktree"
     method_option :force, aliases: "-f", type: :boolean, desc: "Force removal even if worktree has changes"
-    def remove(path)
+    def remove(name_or_path)
       validate_main_repository!
       
       # Validate input
-      if path.nil? || path.strip.empty?
-        puts "Error: Path cannot be empty"
+      if name_or_path.nil? || name_or_path.strip.empty?
+        puts "Error: Name or path cannot be empty"
         exit(1)
       end
+      
+      # Load configuration and resolve path
+      config_manager = ConfigManager.new
+      path = config_manager.resolve_worktree_path(name_or_path)
       
       # Prevent deletion of main repository
       if File.expand_path(path) == File.expand_path(".")
@@ -188,6 +220,7 @@ module WorktreeManager
       unless target_worktree
         puts "Error: Worktree not found at path: #{path}"
         exit(1)
+        return  # Prevent further execution in test environment
       end
       
       # Execute pre-remove hook

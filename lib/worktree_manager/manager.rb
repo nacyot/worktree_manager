@@ -45,6 +45,26 @@ module WorktreeManager
       Worktree.new(path: path, branch: branch)
     end
 
+    def add_tracking_branch(path, local_branch, remote_branch, force: false)
+      # Fetch the remote branch first
+      remote, branch_name = remote_branch.split("/", 2)
+      fetch_output, fetch_status = execute_git_command("fetch #{remote} #{branch_name}")
+      raise Error, "Failed to fetch remote branch: #{fetch_output}" unless fetch_status.success?
+
+      # Create worktree with new branch tracking the remote
+      command = ["worktree", "add"]
+      command << "--force" if force
+      command << "-b" << local_branch
+      command << path
+      command << "#{remote_branch}"
+
+      output, status = execute_git_command(command.join(" "))
+      raise Error, output unless status.success?
+
+      # Return created worktree information
+      Worktree.new(path: path, branch: local_branch)
+    end
+
     def remove(path, force: false)
       command = ["worktree", "remove"]
       command << "--force" if force

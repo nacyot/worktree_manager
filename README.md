@@ -41,21 +41,73 @@ WorktreeManager provides a CLI tool called `wm` for managing worktrees:
 # List all worktrees
 wm list
 
-# Create a new worktree
+# Create a new worktree using just a name (uses worktrees_dir)
+wm add feature-branch
+
+# Create a worktree with a relative path
 wm add ../feature-branch
 
+# Create a worktree with an absolute path
+wm add /path/to/feature-branch
+
 # Create a worktree with an existing branch
-wm add ../feature-branch feature-branch
+wm add feature-branch existing-branch
 
 # Create a worktree with a new branch
-wm add ../new-feature -b new-feature-branch
+wm add feature-branch -b new-feature-branch
 
-# Remove a worktree
+# Remove a worktree using just a name
+wm remove feature-branch
+
+# Remove a worktree with a path
 wm remove ../feature-branch
 
 # Force operations (bypass safety checks)
-wm add ../existing-dir -f
-wm remove ../worktree-with-changes -f
+wm add existing-dir -f
+wm remove worktree-with-changes -f
+
+# Track remote branches
+wm add pr-154 -t origin/pr-154        # Create local pr-154 tracking origin/pr-154
+wm add pr-154 origin/pr-154           # Auto-detect remote branch
+wm add hotfix -t upstream/hotfix-123  # Track from different remote
+```
+
+#### Working with Remote Branches
+
+WorktreeManager makes it easy to work with remote branches:
+
+```bash
+# Method 1: Using --track (-t) option
+wm add pr-154 -t origin/pr-154
+# This will:
+# 1. Fetch origin/pr-154
+# 2. Create a new local branch 'pr-154' tracking 'origin/pr-154'
+# 3. Create worktree at '../worktrees/pr-154' (or configured location)
+
+# Method 2: Auto-detection (when branch name contains '/')
+wm add pr-154 origin/pr-154
+# Automatically detects that origin/pr-154 is a remote branch
+
+# Method 3: Different local and remote names
+wm add my-fix -t origin/pr-154
+# Creates local branch 'my-fix' tracking 'origin/pr-154'
+
+# Working with different remotes
+wm add upstream-fix -t upstream/fix-123
+wm add fork-feature -t fork/new-feature
+```
+
+Example workflow for Pull Request review:
+
+```bash
+# Review PR #154
+wm add pr-154 -t origin/pr-154
+cd ../worktrees/pr-154
+# Make changes, test, etc.
+
+# When done, remove the worktree
+cd ../main-repo
+wm remove pr-154
 ```
 
 ### Ruby API
@@ -98,9 +150,45 @@ WorktreeManager supports hooks that execute before and after worktree operations
 - `pre_remove`: Execute before removing a worktree
 - `post_remove`: Execute after removing a worktree
 
+### Configuration
+
+Create a `.worktree.yml` file in your repository root to configure WorktreeManager:
+
+```yaml
+# Base directory for worktrees (default: "../")
+# When you run 'wm add feature', it creates worktree at '../feature' by default
+# With worktrees_dir set to "../worktrees", it creates at '../worktrees/feature'
+worktrees_dir: "../worktrees"
+
+# Hook configuration (see below)
+hooks:
+  # ...
+```
+
+#### Worktrees Directory
+
+The `worktrees_dir` option allows you to specify a default location for your worktrees:
+
+- **Default value**: `../` (parent directory of your main repository)
+- **Purpose**: Organize all worktrees in a specific directory
+- **Usage**: When you use `wm add <name>` with just a name (no path), it creates the worktree in `<worktrees_dir>/<name>`
+
+Example configurations:
+
+```yaml
+# Keep worktrees in a sibling directory
+worktrees_dir: "../worktrees"
+
+# Keep worktrees in a subdirectory of the parent
+worktrees_dir: "../../git-worktrees"
+
+# Use absolute path
+worktrees_dir: "/home/user/projects/worktrees"
+```
+
 ### Hook Configuration
 
-Create a `.worktree.yml` file in your repository root:
+Hooks allow you to execute custom scripts during worktree operations:
 
 ```yaml
 hooks:
