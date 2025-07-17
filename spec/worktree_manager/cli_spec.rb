@@ -238,39 +238,42 @@ RSpec.describe WorktreeManager::CLI do
     end
 
     context "without argument (interactive mode)" do
+      let(:prompt) { instance_double(TTY::Prompt) }
+      
       before do
         allow(manager).to receive(:list).and_return([worktree1, worktree2])
-        allow($stdin).to receive(:tty?).and_return(true)
-        allow($stderr).to receive(:tty?).and_return(true)
+        allow(cli).to receive(:interactive_mode_available?).and_return(true)
         allow(Dir).to receive(:pwd).and_return("/path/to/feature")
+        allow(TTY::Prompt).to receive(:new).and_return(prompt)
       end
 
       it "shows interactive selection and outputs selected path" do
-        allow($stdin).to receive(:gets).and_return("2\n")
+        expected_choices = [
+          { name: "main - main", value: worktree1, hint: "/path/to/main" },
+          { name: "feature - feature (current)", value: worktree2, hint: "/path/to/feature" }
+        ]
+        
+        allow(prompt).to receive(:select).with("Select a worktree:", expected_choices, per_page: 10).and_return(worktree2)
         
         expect { cli.move }.to output("/path/to/feature\n").to_stdout
-          .and output(/Select a worktree:.*1\. main.*2\. feature.*current/m).to_stderr
       end
 
       it "exits when user cancels" do
-        allow($stdin).to receive(:gets).and_return("\n")
+        expected_choices = [
+          { name: "main - main", value: worktree1, hint: "/path/to/main" },
+          { name: "feature - feature (current)", value: worktree2, hint: "/path/to/feature" }
+        ]
+        
+        allow(prompt).to receive(:select).with("Select a worktree:", expected_choices, per_page: 10).and_raise(TTY::Reader::InputInterrupt)
         
         expect { cli.move }.to output("").to_stdout
           .and output(/Cancelled/).to_stderr
           .and raise_error(SystemExit) { |error| expect(error.status).to eq(0) }
       end
 
-      it "exits with error on invalid selection" do
-        allow($stdin).to receive(:gets).and_return("99\n")
-        
-        expect { cli.move }.to output("").to_stdout
-          .and output(/Error: Invalid selection/).to_stderr
-          .and raise_error(SystemExit) { |error| expect(error.status).to eq(1) }
-      end
-
       context "when not in TTY" do
         before do
-          allow($stdin).to receive(:tty?).and_return(false)
+          allow(cli).to receive(:interactive_mode_available?).and_return(false)
         end
 
         it "exits with error message" do

@@ -1,5 +1,6 @@
 require "thor"
 require "open3"
+require "tty-prompt"
 require_relative "version"
 require_relative "manager"
 require_relative "hook_manager"
@@ -313,46 +314,42 @@ module WorktreeManager
     
     def select_worktree_interactive(worktrees)
       # Check if running in interactive mode
-      unless $stdin.tty? && $stderr.tty?
+      unless interactive_mode_available?
         $stderr.puts "Error: Interactive mode requires a TTY. Please specify a worktree name."
         exit(1)
       end
       
-      # Display worktrees with numbers
-      $stderr.puts "Select a worktree:"
-      $stderr.puts
+      prompt = TTY::Prompt.new(output: $stderr)
       
       # Get current directory to highlight current worktree
       current_path = Dir.pwd
       
-      worktrees.each_with_index do |worktree, index|
+      # Build choices for prompt
+      choices = worktrees.map do |worktree|
         is_current = File.expand_path(current_path).start_with?(File.expand_path(worktree.path))
-        marker = is_current ? " (current)" : ""
         branch_info = worktree.branch || "detached"
+        name = File.basename(worktree.path)
+        label = "#{name} - #{branch_info}"
+        label += " (current)" if is_current
         
-        $stderr.puts "  #{index + 1}. #{File.basename(worktree.path)} - #{branch_info}#{marker}"
-        $stderr.puts "     #{worktree.path}"
+        {
+          name: label,
+          value: worktree,
+          hint: worktree.path
+        }
       end
       
-      $stderr.puts
-      $stderr.print "Enter number (1-#{worktrees.length}): "
-      
-      # Read user input
-      input = $stdin.gets&.strip
-      
-      # Validate input
-      if input.nil? || input.empty?
+      # Show selection prompt
+      begin
+        prompt.select("Select a worktree:", choices, per_page: 10)
+      rescue TTY::Reader::InputInterrupt
         $stderr.puts "\nCancelled."
         exit(0)
       end
-      
-      selection = input.to_i
-      if selection < 1 || selection > worktrees.length
-        $stderr.puts "\nError: Invalid selection."
-        exit(1)
-      end
-      
-      worktrees[selection - 1]
+    end
+    
+    def interactive_mode_available?
+      $stdin.tty? && $stderr.tty?
     end
     
     def find_main_repository_path
