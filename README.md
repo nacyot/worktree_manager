@@ -1,150 +1,210 @@
-# 🌳 Worktree Manager
+# WorktreeManager
 
-Git worktree를 쉽게 관리할 수 있는 Ruby CLI 도구입니다.
+A Ruby gem for managing Git worktrees with ease. WorktreeManager provides a simple and intuitive interface for creating, managing, and removing Git worktrees with built-in hook support.
 
-## ✨ 주요 기능
+## Features
 
-- 🚀 **간편한 CLI**: `wm` 명령어로 worktree 관리
-- 🪝 **Hook 시스템**: worktree 생성/삭제 시 자동 스크립트 실행
-- 🔍 **Verbose 로깅**: 상세한 디버그 정보 제공
-- 🛡️ **에러 방지**: 브랜치 중복, 경로 충돌 자동 검사
-- ⚡ **성능 측정**: Hook 실행 시간 모니터링
-- 🧪 **완전한 테스트**: 53개 유닛 테스트 + 통합 테스트
+- **Easy worktree management**: Create, list, and remove Git worktrees
+- **Branch operations**: Create new branches or checkout existing ones
+- **Hook system**: Execute custom scripts before/after worktree operations
+- **Conflict detection**: Automatic validation to prevent path and branch conflicts
+- **CLI interface**: Simple command-line tool for quick operations
+- **Ruby API**: Programmatic access for integration with other tools
 
-## 📦 설치
+## Installation
 
-```bash
-gem install worktree_manager
-```
-
-또는 Gemfile에 추가:
+Add this line to your application's Gemfile:
 
 ```ruby
 gem 'worktree_manager'
 ```
 
-## 🚀 사용법
-
-### 기본 명령어
+And then execute:
 
 ```bash
-# 버전 확인
-wm version
+bundle install
+```
 
-# worktree 목록 보기
+Or install it yourself as:
+
+```bash
+gem install worktree_manager
+```
+
+## Usage
+
+### Command Line Interface
+
+WorktreeManager provides a CLI tool called `wm` for managing worktrees:
+
+```bash
+# List all worktrees
 wm list
 
-# worktree 생성 (기존 브랜치)
-wm add ../feature-branch feature/existing
+# Create a new worktree
+wm add ../feature-branch
 
-# worktree 생성 (새 브랜치)
-wm add ../new-feature -b feature/new
+# Create a worktree with an existing branch
+wm add ../feature-branch feature-branch
 
-# worktree 삭제
+# Create a worktree with a new branch
+wm add ../new-feature -b new-feature-branch
+
+# Remove a worktree
 wm remove ../feature-branch
 
-# 도움말
-wm help
+# Force operations (bypass safety checks)
+wm add ../existing-dir -f
+wm remove ../worktree-with-changes -f
 ```
 
-### 고급 옵션
+### Ruby API
 
-```bash
-# 강제 생성 (기존 디렉터리 덮어쓰기)
-wm add ../hotfix --force
+```ruby
+require 'worktree_manager'
 
-# 상세 로그와 함께 실행
-wm add ../debug-feature -b debug/test --verbose
+# Create a manager instance
+manager = WorktreeManager.new
 
-# 강제 삭제 (변경사항이 있어도)
-wm remove ../old-feature --force
+# List existing worktrees
+worktrees = manager.list
+worktrees.each do |worktree|
+  puts "Path: #{worktree.path}"
+  puts "Branch: #{worktree.branch}"
+  puts "Detached: #{worktree.detached?}"
+end
+
+# Add a new worktree
+worktree = manager.add("../feature-branch", "feature-branch")
+
+# Add a worktree with a new branch
+worktree = manager.add_with_new_branch("../new-feature", "new-feature-branch")
+
+# Remove a worktree
+manager.remove("../feature-branch")
+
+# Clean up removed worktrees
+manager.prune
 ```
 
-## 🪝 Hook 시스템
+## Hook System
 
-worktree 생성/삭제 시 자동으로 스크립트를 실행할 수 있습니다.
+WorktreeManager supports hooks that execute before and after worktree operations:
 
-### Hook 설정 파일
+### Hook Types
 
-`.worktree_hooks.yml` 파일을 프로젝트 루트에 생성:
+- `pre_add`: Execute before creating a worktree
+- `post_add`: Execute after creating a worktree
+- `pre_remove`: Execute before removing a worktree
+- `post_remove`: Execute after removing a worktree
+
+### Hook Configuration
+
+Create a `.worktree.yml` file in your repository root:
 
 ```yaml
-# worktree 생성 전 실행
-pre_add:
-  command: "echo '🌿 Worktree 생성 시작: $WORKTREE_PATH'"
-  stop_on_error: true
+hooks:
+  # Execute before creating a worktree (runs in main repository)
+  pre_add:
+    commands:
+      - "echo 'Creating worktree at: $WORKTREE_PATH'"
+      - "echo 'Branch: $WORKTREE_BRANCH'"
+    stop_on_error: true  # Stop if any command fails (default: true)
 
-# worktree 생성 후 실행
-post_add:
-  - "bundle install"
-  - "echo '✅ 설정 완료: $WORKTREE_BRANCH'"
+  # Execute after creating a worktree (runs in new worktree directory)
+  post_add:
+    commands:
+      - "bundle install"
+      - "echo 'Setup complete: $WORKTREE_BRANCH'"
+    # Override default working directory if needed
+    # pwd: "$WORKTREE_MAIN"  # Run in main repository instead
 
-# worktree 삭제 전 실행
-pre_remove:
-  command: "git stash push -m 'Auto stash before removal'"
+  # Execute before removing a worktree (runs in worktree directory)
+  pre_remove:
+    commands:
+      - "git add -A"
+      - "git stash push -m 'Auto stash before removal'"
+    stop_on_error: false  # Continue even if commands fail
 
-# worktree 삭제 후 실행
-post_remove:
-  - "echo '🗑️ 정리 완료: $WORKTREE_PATH'"
+  # Execute after removing a worktree (runs in main repository)
+  post_remove:
+    commands:
+      - "echo 'Cleanup complete: $WORKTREE_PATH'"
 ```
 
-### 사용 가능한 환경 변수
+### Available Environment Variables
 
-- `$WORKTREE_PATH`: worktree 경로
-- `$WORKTREE_BRANCH`: 브랜치명
-- `$WORKTREE_MANAGER_ROOT`: 메인 저장소 경로
-- `$WORKTREE_FORCE`: 강제 옵션 여부
-- `$WORKTREE_SUCCESS`: 작업 성공 여부 (post hook에서만)
+- `$WORKTREE_PATH`: Path where the worktree will be created/removed (relative path)
+- `$WORKTREE_ABSOLUTE_PATH`: Absolute path to the worktree
+- `$WORKTREE_BRANCH`: Branch name (if specified)
+- `$WORKTREE_MAIN`: Main repository path
+- `$WORKTREE_MANAGER_ROOT`: Main repository path (legacy, same as `$WORKTREE_MAIN`)
+- `$WORKTREE_FORCE`: Whether force option is enabled ("true" or "")
+- `$WORKTREE_SUCCESS`: Whether the operation succeeded (post hooks only, "true" or "false")
 
-### 실용적인 Hook 예제
+### Practical Hook Examples
 
 ```yaml
-# 개발 환경 자동 설정
-post_add:
-  - "bundle install"              # 의존성 설치
-  - "cp .env.example .env"        # 환경 변수 파일 복사
-  - "code $WORKTREE_PATH"         # VS Code로 열기
+hooks:
+  # Automatic development environment setup
+  post_add:
+    commands:
+      - "bundle install"              # Install dependencies
+      - "yarn install"                # Install JS dependencies
+      - "cp .env.example .env"        # Copy environment variables
+      - "code ."                      # Open in VS Code
+    # Default pwd is the new worktree directory
 
-# 작업 내용 자동 백업
+  # Automatic backup of work
+  pre_remove:
+    commands:
+      - "git add -A"
+      - "git stash push -m 'Auto backup: $WORKTREE_BRANCH'"
+    stop_on_error: false  # Continue even if nothing to stash
+
+  # Notification system (run in main repository)
+  post_add:
+    commands:
+      - "osascript -e 'display notification \"Workspace ready: $WORKTREE_BRANCH\" with title \"WorktreeManager\"'"
+    pwd: "$WORKTREE_MAIN"  # Run notification from main repo
+
+  # CI/CD integration
+  post_add:
+    commands:
+      - "gh pr create --draft --title 'WIP: $WORKTREE_BRANCH' --body 'Auto-created by worktree manager'"
+    pwd: "$WORKTREE_ABSOLUTE_PATH"
+```
+
+### Legacy Configuration Support
+
+For backward compatibility, the following formats are still supported:
+
+```yaml
+# Simple string command
+pre_add: "echo 'Simple command'"
+
+# Array of commands
+post_add:
+  - "echo 'Command 1'"
+  - "echo 'Command 2'"
+
+# Hash with single command
 pre_remove:
-  - "git add -A"
-  - "git stash push -m 'Auto backup: $WORKTREE_BRANCH'"
-
-# 알림 발송
-post_add:
-  - "osascript -e 'display notification \"워크스페이스 준비 완료\" with title \"$WORKTREE_BRANCH\"'"
+  command: "echo 'Command with options'"
+  stop_on_error: false
 ```
 
-## 🔍 디버깅
+## Error Prevention
 
-### Verbose 모드
+WorktreeManager automatically validates various error conditions:
 
-`--verbose` 또는 `-v` 옵션으로 상세한 실행 정보를 확인할 수 있습니다:
+- ❌ **Empty path input**
+- ❌ **Invalid branch names** (spaces, special characters)
+- ❌ **Existing directory conflicts**
+- ❌ **Branch already in use**
+- ❌ **Attempting to remove main repository**
 
-```bash
-wm add ../debug-workspace -b debug/issue-123 --verbose
-```
-
-출력 예시:
-```
-[15:42:52.168] [DEBUG] 🪝 Hook 실행 시작: pre_add
-[15:42:52.168] [DEBUG] 📋 Hook 설정: {"command" => "echo 'Starting...'"}
-[15:42:52.168] [DEBUG] 🔧 컨텍스트: {path: "../debug-workspace", branch: "debug/issue-123"}
-[15:42:52.177] [DEBUG] ⏱️ 실행 시간: 9.08ms
-[15:42:52.177] [DEBUG] ✅ Hook 실행 완료: pre_add (결과: true)
-```
-
-## 🛡️ 에러 방지
-
-Worktree Manager는 다양한 에러 상황을 자동으로 검사합니다:
-
-- ❌ **빈 경로 입력**
-- ❌ **잘못된 브랜치명** (공백, 특수문자)
-- ❌ **기존 디렉터리 충돌**
-- ❌ **브랜치 중복 사용**
-- ❌ **메인 저장소 삭제 시도**
-
-### 에러 메시지 예시
+### Error Message Examples
 
 ```bash
 $ wm add existing-dir -b new-branch
@@ -155,100 +215,99 @@ $ wm add ../test -b "invalid branch"
 Error: Invalid branch name 'invalid branch'. Branch names cannot contain spaces or special characters.
 ```
 
-## 📋 CLI 명령어 레퍼런스
+## CLI Command Reference
 
 ### `wm version`
-현재 설치된 버전을 표시합니다.
+Display the current installed version.
 
 ### `wm list`
-현재 Git 저장소의 모든 worktree 목록을 표시합니다.
+List all worktrees in the current Git repository.
 
-**요구사항**: 메인 Git 저장소에서만 실행 가능
+**Requirements**: Must be run from the main Git repository
 
 ### `wm add PATH [BRANCH]`
-새로운 worktree를 생성합니다.
+Create a new worktree.
 
-**인수**:
-- `PATH`: worktree를 생성할 경로
-- `BRANCH`: 사용할 브랜치 (선택사항)
+**Arguments**:
+- `PATH`: Path where the worktree will be created
+- `BRANCH`: Branch to use (optional)
 
-**옵션**:
-- `-b, --branch BRANCH`: 새 브랜치를 생성하여 사용
-- `-f, --force`: 기존 디렉터리가 있어도 강제 생성
-- `-v, --verbose`: 상세한 실행 로그 출력
+**Options**:
+- `-b, --branch BRANCH`: Create a new branch for the worktree
+- `-f, --force`: Force creation even if directory exists
+- `-v, --verbose`: Enable verbose output for debugging
 
-**예시**:
+**Examples**:
 ```bash
-wm add ../feature-api feature/api        # 기존 브랜치 사용
-wm add ../new-feature -b feature/new     # 새 브랜치 생성
-wm add ../override --force               # 강제 생성
+wm add ../feature-api feature/api        # Use existing branch
+wm add ../new-feature -b feature/new     # Create new branch
+wm add ../override --force               # Force creation
 ```
 
 ### `wm remove PATH`
-기존 worktree를 삭제합니다.
+Remove an existing worktree.
 
-**인수**:
-- `PATH`: 삭제할 worktree 경로
+**Arguments**:
+- `PATH`: Path of the worktree to remove
 
-**옵션**:
-- `-f, --force`: 변경사항이 있어도 강제 삭제
-- `-v, --verbose`: 상세한 실행 로그 출력
+**Options**:
+- `-f, --force`: Force removal even if worktree has changes
+- `-v, --verbose`: Enable verbose output for debugging
 
-**예시**:
+**Examples**:
 ```bash
-wm remove ../feature-api                 # 일반 삭제
-wm remove ../old-feature --force         # 강제 삭제
+wm remove ../feature-api                 # Normal removal
+wm remove ../old-feature --force         # Force removal
 ```
 
-## 🧪 개발 및 테스트
+## Requirements
 
-### 개발 환경 설정
+- Ruby 3.0.0 or higher
+- Git 2.5.0 or higher (for worktree support)
+
+## Development
+
+After checking out the repo, run:
 
 ```bash
-# 저장소 클론
-git clone https://github.com/username/worktree_manager.git
-cd worktree_manager
-
-# 의존성 설치
+# Install dependencies
 bundle install
 
-# 테스트 실행
+# Run tests
 bundle exec rspec
 
-# 젬 빌드
+# Build gem
 gem build worktree_manager.gemspec
 
-# 로컬 설치
+# Install locally
 gem install worktree_manager-*.gem
 ```
 
-### 테스트 커버리지
+### Test Coverage
 
-- **53개 유닛 테스트**: 모든 핵심 기능 검증
-- **통합 테스트**: 실제 Git 환경에서 동작 확인
-- **에러 처리 테스트**: 다양한 에러 상황 시뮬레이션
-- **Hook 시스템 테스트**: 환경 변수 전달 및 실행 검증
+- **53 unit tests**: Comprehensive coverage of all core features
+- **Integration tests**: Real Git environment validation
+- **Error handling tests**: Various error condition simulations
+- **Hook system tests**: Environment variable passing and execution validation
 
-### 성능 벤치마크
+## Contributing
 
-- Hook 실행 시간: 평균 10ms 이하
-- Worktree 생성: 평균 250ms 이하
-- Worktree 삭제: 평균 220ms 이하
+Bug reports and pull requests are welcome on GitHub at https://github.com/ben/worktree_manager.
 
-## 🤝 기여하기
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-1. Fork 저장소
-2. 기능 브랜치 생성 (`git checkout -b feature/amazing-feature`)
-3. 변경사항 커밋 (`git commit -m 'Add amazing feature'`)
-4. 브랜치에 Push (`git push origin feature/amazing-feature`)
-5. Pull Request 생성
+## Changelog
 
-## 🙏 감사의 말
+### 0.1.0
 
-- Git worktree 기능을 제공하는 Git 팀
-- Ruby 및 RSpec 커뮤니티
-- 모든 기여자들
-
----
-
-**🌟 Worktree Manager로 더 효율적인 Git 워크플로우를 경험하세요!**
+- Initial release
+- Basic worktree management (add, remove, list)
+- CLI interface with `wm` command
+- Hook system support with YAML configuration
+- Conflict detection and validation
+- Comprehensive error handling
+- Verbose debugging mode
