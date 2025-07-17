@@ -189,6 +189,21 @@ RSpec.describe WorktreeManager::CLI do
         end
       end
 
+      context "with no_hooks option" do
+        before do
+          allow(manager).to receive(:add).and_return(worktree)
+          allow(manager).to receive(:list).and_return([])
+          allow(File).to receive(:expand_path).and_call_original
+          allow(Dir).to receive(:exist?).and_return(false)
+          allow(Open3).to receive(:capture2e).and_return(["", double(success?: true)])
+        end
+
+        it "skips hook execution" do
+          expect(hook_manager).not_to receive(:execute_hook)
+          cli.invoke(:add, ["/test/path"], { no_hooks: true })
+        end
+      end
+
       context "with track option" do
         before do
           allow(hook_manager).to receive(:execute_hook).and_return(true)
@@ -400,6 +415,18 @@ RSpec.describe WorktreeManager::CLI do
         it "exits with error message" do
           expect { cli.remove("/test/path") }.to output(/Error: pre_remove hook failed/).to_stdout
             .and raise_error(SystemExit)
+        end
+      end
+
+      context "with no_hooks option" do
+        before do
+          allow(manager).to receive(:list).and_return([worktree])
+          allow(manager).to receive(:remove)
+        end
+
+        it "skips hook execution" do
+          expect(hook_manager).not_to receive(:execute_hook)
+          cli.invoke(:remove, ["/test/path"], { no_hooks: true })
         end
       end
     end

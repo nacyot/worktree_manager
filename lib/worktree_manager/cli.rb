@@ -48,6 +48,7 @@ module WorktreeManager
     method_option :branch, aliases: "-b", desc: "Create a new branch for the worktree"
     method_option :track, aliases: "-t", desc: "Track a remote branch"
     method_option :force, aliases: "-f", type: :boolean, desc: "Force creation even if directory exists"
+    method_option :no_hooks, type: :boolean, desc: "Skip hook execution"
     def add(name_or_path, branch = nil)
       validate_main_repository!
       
@@ -102,9 +103,11 @@ module WorktreeManager
         force: options[:force]
       }
       
-      unless hook_manager.execute_hook(:pre_add, context)
-        puts "Error: pre_add hook failed. Aborting worktree creation."
-        exit(1)
+      unless options[:no_hooks]
+        unless hook_manager.execute_hook(:pre_add, context)
+          puts "Error: pre_add hook failed. Aborting worktree creation."
+          exit(1)
+        end
       end
       
       begin
@@ -129,17 +132,21 @@ module WorktreeManager
         puts "  cd #{result.path}"
         
         # Execute post-add hook
-        context[:success] = true
-        context[:worktree_path] = result.path
-        hook_manager.execute_hook(:post_add, context)
+        unless options[:no_hooks]
+          context[:success] = true
+          context[:worktree_path] = result.path
+          hook_manager.execute_hook(:post_add, context)
+        end
         
       rescue WorktreeManager::Error => e
         puts "Error: #{e.message}"
         
         # Execute post-add hook with error context on failure
-        context[:success] = false
-        context[:error] = e.message
-        hook_manager.execute_hook(:post_add, context)
+        unless options[:no_hooks]
+          context[:success] = false
+          context[:error] = e.message
+          hook_manager.execute_hook(:post_add, context)
+        end
         
         exit(1)
       end
@@ -189,6 +196,7 @@ module WorktreeManager
     desc "remove [NAME_OR_PATH]", "Remove an existing worktree"
     method_option :force, aliases: "-f", type: :boolean, desc: "Force removal even if worktree has changes"
     method_option :all, type: :boolean, desc: "Remove all worktrees at once"
+    method_option :no_hooks, type: :boolean, desc: "Skip hook execution"
     def remove(name_or_path = nil)
       validate_main_repository!
       
@@ -263,9 +271,11 @@ module WorktreeManager
         force: options[:force]
       }
       
-      unless hook_manager.execute_hook(:pre_remove, context)
-        puts "Error: pre_remove hook failed. Aborting worktree removal."
-        exit(1)
+      unless options[:no_hooks]
+        unless hook_manager.execute_hook(:pre_remove, context)
+          puts "Error: pre_remove hook failed. Aborting worktree removal."
+          exit(1)
+        end
       end
       
       begin
@@ -275,16 +285,20 @@ module WorktreeManager
         puts "Worktree removed: #{target_worktree.path}"
         
         # Execute post-remove hook
-        context[:success] = true
-        hook_manager.execute_hook(:post_remove, context)
+        unless options[:no_hooks]
+          context[:success] = true
+          hook_manager.execute_hook(:post_remove, context)
+        end
         
       rescue WorktreeManager::Error => e
         puts "Error: #{e.message}"
         
         # Execute post-remove hook with error context on failure
-        context[:success] = false
-        context[:error] = e.message
-        hook_manager.execute_hook(:post_remove, context)
+        unless options[:no_hooks]
+          context[:success] = false
+          context[:error] = e.message
+          hook_manager.execute_hook(:post_remove, context)
+        end
         
         exit(1)
       end
@@ -358,10 +372,12 @@ module WorktreeManager
           force: options[:force]
         }
         
-        unless hook_manager.execute_hook(:pre_remove, context)
-          puts "  Error: pre_remove hook failed. Skipping this worktree."
-          failed_count += 1
-          next
+        unless options[:no_hooks]
+          unless hook_manager.execute_hook(:pre_remove, context)
+            puts "  Error: pre_remove hook failed. Skipping this worktree."
+            failed_count += 1
+            next
+          end
         end
         
         begin
@@ -372,17 +388,21 @@ module WorktreeManager
           removed_count += 1
           
           # Execute post-remove hook
-          context[:success] = true
-          hook_manager.execute_hook(:post_remove, context)
+          unless options[:no_hooks]
+            context[:success] = true
+            hook_manager.execute_hook(:post_remove, context)
+          end
           
         rescue WorktreeManager::Error => e
           puts "  Error: #{e.message}"
           failed_count += 1
           
           # Execute post-remove hook with error context on failure
-          context[:success] = false
-          context[:error] = e.message
-          hook_manager.execute_hook(:post_remove, context)
+          unless options[:no_hooks]
+            context[:success] = false
+            context[:error] = e.message
+            hook_manager.execute_hook(:post_remove, context)
+          end
         end
       end
       
