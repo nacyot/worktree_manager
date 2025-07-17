@@ -11,7 +11,7 @@ Gem::Specification.new do |spec|
   spec.homepage      = "https://github.com/ben/worktree_manager"
   spec.license       = "MIT"
 
-  spec.files         = Dir["lib/**/*", "bin/*", "README.md", "LICENSE"]
+  spec.files         = Dir["lib/**/*", "bin/*", "README.md", ".version"]
   spec.bindir        = "bin"
   spec.executables   = spec.files.grep(%r{^bin/}) { |f| File.basename(f) }
   spec.require_paths = ["lib"]
