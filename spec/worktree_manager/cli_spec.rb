@@ -721,4 +721,151 @@ RSpec.describe WorktreeManager::CLI do
       end
     end
   end
+
+  describe "#reset" do
+    context "when running from main repository" do
+      before do
+        allow(cli).to receive(:main_repository?).and_return(true)
+        stub_exit
+      end
+
+      it "exits with error message" do
+        expect { cli.reset }.to output(/Error: Cannot run reset from the main repository/).to_stdout
+          .and raise_error(SystemExit)
+      end
+    end
+
+    context "when running from a worktree" do
+      let(:config_manager) { instance_double(WorktreeManager::ConfigManager) }
+      
+      before do
+        allow(cli).to receive(:main_repository?).and_return(false)
+        allow(WorktreeManager::ConfigManager).to receive(:new).and_return(config_manager)
+        allow(config_manager).to receive(:main_branch_name).and_return("main")
+      end
+
+      context "when on the main branch" do
+        before do
+          allow(Open3).to receive(:capture2).with("git symbolic-ref --short HEAD")
+            .and_return(["main\n", double(success?: true)])
+          stub_exit
+        end
+
+        it "exits with error message" do
+          expect { cli.reset }.to output(/Error: Cannot reset the main branch 'main'/).to_stdout
+            .and raise_error(SystemExit)
+        end
+      end
+
+      context "when branch detection fails" do
+        before do
+          allow(Open3).to receive(:capture2).with("git symbolic-ref --short HEAD")
+            .and_return(["", double(success?: false)])
+          stub_exit
+        end
+
+        it "exits with error message" do
+          expect { cli.reset }.to output(/Error: Could not determine current branch/).to_stdout
+            .and raise_error(SystemExit)
+        end
+      end
+
+      context "when on a feature branch" do
+        before do
+          allow(Open3).to receive(:capture2).with("git symbolic-ref --short HEAD")
+            .and_return(["feature/test\n", double(success?: true)])
+        end
+
+        context "with uncommitted changes and no force flag" do
+          before do
+            allow(Open3).to receive(:capture2).with("git status --porcelain")
+              .and_return([" M file.txt\n", double(success?: true)])
+            stub_exit
+          end
+
+          it "exits with error message" do
+            expect { cli.reset }.to output(/Error: You have uncommitted changes. Use --force to discard them/).to_stdout
+              .and raise_error(SystemExit)
+          end
+        end
+
+        context "with uncommitted changes and force flag" do
+          before do
+            allow(cli).to receive(:options).and_return({ force: true })
+            allow(Open3).to receive(:capture2e).with("git fetch origin main")
+              .and_return(["", double(success?: true)])
+            allow(Open3).to receive(:capture2e).with("git reset --hard origin/main")
+              .and_return(["HEAD is now at abc123 Latest commit\n", double(success?: true)])
+          end
+
+          it "performs hard reset to origin/main" do
+            expect { cli.reset }.to output(/Successfully reset 'feature\/test' to origin\/main/).to_stdout
+          end
+        end
+
+        context "with clean working directory" do
+          before do
+            allow(Open3).to receive(:capture2).with("git status --porcelain")
+              .and_return(["", double(success?: true)])
+            allow(Open3).to receive(:capture2e).with("git fetch origin main")
+              .and_return(["", double(success?: true)])
+            allow(Open3).to receive(:capture2e).with("git reset origin/main")
+              .and_return(["Resetting to origin/main\n", double(success?: true)])
+          end
+
+          it "performs reset to origin/main" do
+            expect { cli.reset }.to output(/Successfully reset 'feature\/test' to origin\/main/).to_stdout
+          end
+        end
+
+        context "when fetch fails" do
+          before do
+            allow(Open3).to receive(:capture2).with("git status --porcelain")
+              .and_return(["", double(success?: true)])
+            allow(Open3).to receive(:capture2e).with("git fetch origin main")
+              .and_return(["fatal: couldn't find remote ref main", double(success?: false)])
+            stub_exit
+          end
+
+          it "exits with error message" do
+            expect { cli.reset }.to output(/Error: Failed to fetch origin\/main/).to_stdout
+              .and raise_error(SystemExit)
+          end
+        end
+
+        context "when reset fails" do
+          before do
+            allow(Open3).to receive(:capture2).with("git status --porcelain")
+              .and_return(["", double(success?: true)])
+            allow(Open3).to receive(:capture2e).with("git fetch origin main")
+              .and_return(["", double(success?: true)])
+            allow(Open3).to receive(:capture2e).with("git reset origin/main")
+              .and_return(["fatal: ambiguous argument 'origin/main'", double(success?: false)])
+            stub_exit
+          end
+
+          it "exits with error message" do
+            expect { cli.reset }.to output(/Error: Failed to reset/).to_stdout
+              .and raise_error(SystemExit)
+          end
+        end
+
+        context "with custom main branch name" do
+          before do
+            allow(config_manager).to receive(:main_branch_name).and_return("master")
+            allow(Open3).to receive(:capture2).with("git status --porcelain")
+              .and_return(["", double(success?: true)])
+            allow(Open3).to receive(:capture2e).with("git fetch origin master")
+              .and_return(["", double(success?: true)])
+            allow(Open3).to receive(:capture2e).with("git reset origin/master")
+              .and_return(["", double(success?: true)])
+          end
+
+          it "uses the configured main branch name" do
+            expect { cli.reset }.to output(/Successfully reset 'feature\/test' to origin\/master/).to_stdout
+          end
+        end
+      end
+    end
+  end
 end

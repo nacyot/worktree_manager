@@ -193,6 +193,63 @@ module WorktreeManager
       puts target.path
     end
 
+    desc "reset", "Reset current worktree branch to origin/main"
+    method_option :force, aliases: "-f", type: :boolean, desc: "Force reset even if there are uncommitted changes"
+    def reset
+      # Check if we're in a worktree (not main repository)
+      if main_repository?
+        puts "Error: Cannot run reset from the main repository. This command must be run from a worktree."
+        exit(1)
+      end
+      
+      # Get current branch name
+      current_branch_output, status = Open3.capture2("git symbolic-ref --short HEAD")
+      unless status.success?
+        puts "Error: Could not determine current branch."
+        exit(1)
+      end
+      
+      current_branch = current_branch_output.strip
+      
+      # Check if we're on the main branch
+      config_manager = ConfigManager.new
+      main_branch_name = config_manager.main_branch_name
+      
+      if current_branch == main_branch_name
+        puts "Error: Cannot reset the main branch '#{main_branch_name}'."
+        exit(1)
+      end
+      
+      # Check for uncommitted changes if not forcing
+      unless options[:force]
+        status_output, status = Open3.capture2("git status --porcelain")
+        if status.success? && !status_output.strip.empty?
+          puts "Error: You have uncommitted changes. Use --force to discard them."
+          exit(1)
+        end
+      end
+      
+      puts "Resetting branch '#{current_branch}' to origin/#{main_branch_name}..."
+      
+      # Fetch origin/main
+      fetch_output, fetch_status = Open3.capture2e("git fetch origin #{main_branch_name}")
+      unless fetch_status.success?
+        puts "Error: Failed to fetch origin/#{main_branch_name}: #{fetch_output}"
+        exit(1)
+      end
+      
+      # Reset current branch to origin/main
+      reset_command = options[:force] ? "git reset --hard origin/#{main_branch_name}" : "git reset origin/#{main_branch_name}"
+      reset_output, reset_status = Open3.capture2e(reset_command)
+      
+      if reset_status.success?
+        puts "Successfully reset '#{current_branch}' to origin/#{main_branch_name}"
+      else
+        puts "Error: Failed to reset: #{reset_output}"
+        exit(1)
+      end
+    end
+
     desc "remove [NAME_OR_PATH]", "Remove an existing worktree"
     method_option :force, aliases: "-f", type: :boolean, desc: "Force removal even if worktree has changes"
     method_option :all, type: :boolean, desc: "Remove all worktrees at once"

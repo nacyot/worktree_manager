@@ -8,6 +8,7 @@ module WorktreeManager
     ].freeze
 
     DEFAULT_WORKTREES_DIR = "../"
+    DEFAULT_MAIN_BRANCH_NAME = "main"
 
     def initialize(repository_path = ".")
       @repository_path = File.expand_path(repository_path)
@@ -20,6 +21,10 @@ module WorktreeManager
 
     def hooks
       @config["hooks"] || {}
+    end
+
+    def main_branch_name
+      @config["main_branch_name"] || DEFAULT_MAIN_BRANCH_NAME
     end
 
     def resolve_worktree_path(name_or_path)

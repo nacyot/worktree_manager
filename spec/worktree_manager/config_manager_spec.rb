@@ -84,6 +84,36 @@ RSpec.describe WorktreeManager::ConfigManager do
     end
   end
 
+  describe "#main_branch_name" do
+    context "when no config file exists" do
+      it "returns the default value" do
+        expect(config_manager.main_branch_name).to eq("main")
+      end
+    end
+
+    context "when config file exists with main_branch_name" do
+      before do
+        config_content = { "main_branch_name" => "master" }
+        File.write(File.join(test_dir, ".worktree.yml"), config_content.to_yaml)
+      end
+
+      it "returns the configured value" do
+        expect(config_manager.main_branch_name).to eq("master")
+      end
+    end
+
+    context "when config file exists with custom main_branch_name" do
+      before do
+        config_content = { "main_branch_name" => "development" }
+        File.write(File.join(test_dir, ".worktree.yml"), config_content.to_yaml)
+      end
+
+      it "returns the configured custom value" do
+        expect(config_manager.main_branch_name).to eq("development")
+      end
+    end
+  end
+
   describe "#resolve_worktree_path" do
     before do
       config_content = { "worktrees_dir" => "../worktrees" }
