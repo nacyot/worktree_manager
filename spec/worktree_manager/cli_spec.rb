@@ -16,6 +16,91 @@ RSpec.describe WorktreeManager::CLI do
     end
   end
 
+  describe "#init" do
+    let(:example_file) { File.expand_path("../../../.worktree.yml.example", __FILE__) }
+    
+    context "when running from a worktree" do
+      before do
+        allow(cli).to receive(:main_repository?).and_return(false)
+        allow(cli).to receive(:find_main_repository_path).and_return("/path/to/main")
+        stub_exit
+      end
+
+      it "exits with error message" do
+        expect { cli.init }.to output(/Error: This command can only be run from the main Git repository/).to_stdout
+          .and raise_error(SystemExit)
+      end
+    end
+
+    context "when running from main repository" do
+      before do
+        allow(cli).to receive(:main_repository?).and_return(true)
+        allow(cli).to receive(:find_example_file).and_return(example_file)
+      end
+
+      context "when .worktree.yml already exists" do
+        before do
+          allow(File).to receive(:exist?).with(".worktree.yml").and_return(true)
+          stub_exit
+        end
+
+        it "exits with error message" do
+          expect { cli.init }.to output(/Error: .worktree.yml already exists. Use --force to overwrite./).to_stdout
+            .and raise_error(SystemExit)
+        end
+
+        context "with --force option" do
+          before do
+            allow(cli).to receive(:options).and_return({ force: true })
+            allow(FileUtils).to receive(:cp)
+          end
+
+          it "overwrites existing file" do
+            expect(FileUtils).to receive(:cp).with(example_file, ".worktree.yml")
+            expect { cli.init }.to output(/Created .worktree.yml from example/).to_stdout
+          end
+        end
+      end
+
+      context "when .worktree.yml does not exist" do
+        before do
+          allow(File).to receive(:exist?).with(".worktree.yml").and_return(false)
+          allow(FileUtils).to receive(:cp)
+        end
+
+        it "creates configuration file from example" do
+          expect(FileUtils).to receive(:cp).with(example_file, ".worktree.yml")
+          expect { cli.init }.to output(/Created .worktree.yml from example/).to_stdout
+        end
+      end
+
+      context "when example file is not found" do
+        before do
+          allow(cli).to receive(:find_example_file).and_return(nil)
+          stub_exit
+        end
+
+        it "exits with error message" do
+          expect { cli.init }.to output(/Error: Could not find .worktree.yml.example file./).to_stdout
+            .and raise_error(SystemExit)
+        end
+      end
+
+      context "when file copy fails" do
+        before do
+          allow(File).to receive(:exist?).with(".worktree.yml").and_return(false)
+          allow(FileUtils).to receive(:cp).and_raise(StandardError.new("Permission denied"))
+          stub_exit
+        end
+
+        it "exits with error message" do
+          expect { cli.init }.to output(/Error: Failed to create configuration file: Permission denied/).to_stdout
+            .and raise_error(SystemExit)
+        end
+      end
+    end
+  end
+
   describe "#list" do
     context "when not in a git repository" do
       before do
