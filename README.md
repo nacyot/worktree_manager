@@ -10,6 +10,9 @@ A Ruby gem for managing Git worktrees with ease. WorktreeManager provides a simp
 - **Conflict detection**: Automatic validation to prevent path and branch conflicts
 - **CLI interface**: Simple command-line tool for quick operations
 - **Ruby API**: Programmatic access for integration with other tools
+- **Configuration initialization**: Easy setup with `wm init` command
+- **Branch reset**: Reset worktree branches to origin/main with `wm reset`
+- **Help support**: All commands support `--help` flag for usage information
 
 ## Installation
 
@@ -38,6 +41,9 @@ gem install worktree_manager
 WorktreeManager provides a CLI tool called `wm` for managing worktrees:
 
 ```bash
+# Initialize configuration file
+wm init
+
 # List all worktrees
 wm list
 
@@ -70,6 +76,15 @@ wm remove worktree-with-changes -f
 wm add pr-154 -t origin/pr-154        # Create local pr-154 tracking origin/pr-154
 wm add pr-154 origin/pr-154           # Auto-detect remote branch
 wm add hotfix -t upstream/hotfix-123  # Track from different remote
+
+# Reset worktree branch to origin/main (must be run from worktree)
+wm reset                              # Reset current branch to origin/main
+wm reset -f                           # Force reset (discard uncommitted changes)
+
+# Get help for any command
+wm --help                             # Show all commands
+wm add --help                         # Show help for add command
+wm remove -h                          # Short help flag also works
 ```
 
 #### Working with Remote Branches
@@ -159,6 +174,10 @@ Create a `.worktree.yml` file in your repository root to configure WorktreeManag
 # When you run 'wm add feature', it creates worktree at '../feature' by default
 # With worktrees_dir set to "../worktrees", it creates at '../worktrees/feature'
 worktrees_dir: "../worktrees"
+
+# Main branch name for reset command (default: "main")
+# Used by 'wm reset' to determine which branch to reset to
+main_branch_name: "main"  # or "master" for older repositories
 
 # Hook configuration (see below)
 hooks:
@@ -265,13 +284,27 @@ hooks:
 
 ## CLI Command Reference
 
+All commands support help flags (`--help`, `-h`, `-?`, `--usage`) to display usage information.
+
 ### `wm version`
 Display the current installed version.
 
-### `wm list`
-List all worktrees in the current Git repository.
+### `wm init`
+Initialize a `.worktree.yml` configuration file in your repository.
+
+**Options**:
+- `-f, --force`: Overwrite existing configuration file
 
 **Requirements**: Must be run from the main Git repository
+
+**Examples**:
+```bash
+wm init                                  # Create .worktree.yml from example
+wm init --force                          # Overwrite existing .worktree.yml
+```
+
+### `wm list`
+List all worktrees in the current Git repository. Can be run from either the main repository or any worktree.
 
 ### `wm add PATH [BRANCH]`
 Create a new worktree.
@@ -306,6 +339,22 @@ Remove an existing worktree.
 ```bash
 wm remove ../feature-api                 # Normal removal
 wm remove ../old-feature --force         # Force removal
+```
+
+### `wm reset`
+Reset the current worktree branch to origin/main (or configured main branch).
+
+**Options**:
+- `-f, --force`: Force reset even if there are uncommitted changes
+
+**Requirements**: Must be run from a worktree (not from the main repository)
+
+**Configuration**: The target branch can be configured via `main_branch_name` in `.worktree.yml`
+
+**Examples**:
+```bash
+wm reset                                 # Reset to origin/main
+wm reset --force                         # Force reset, discarding changes
 ```
 
 ## Requirements
