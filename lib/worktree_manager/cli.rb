@@ -9,6 +9,21 @@ require_relative "config_manager"
 module WorktreeManager
   class CLI < Thor
     class_option :verbose, aliases: "-v", type: :boolean, desc: "Enable verbose output for debugging"
+    
+    HELP_ALIASES = %w[--help -h -? --usage].freeze
+    
+    # Override Thor's start method to handle help requests properly
+    def self.start(given_args = ARGV, config = {})
+      # Intercept "wm command --help" style requests
+      if given_args.size >= 2 && (flag = given_args.detect { |a| HELP_ALIASES.include?(a) })
+        # Extract the command (first argument)
+        command = given_args.first
+        # Replace the entire args with just "help command" to avoid Thor validation issues
+        given_args = ["help", command]
+      end
+      
+      super(given_args, config)
+    end
 
     desc "version", "Show version"
     def version
