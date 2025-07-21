@@ -1,6 +1,7 @@
 require "thor"
 require "open3"
 require "tty-prompt"
+require "fileutils"
 require_relative "version"
 require_relative "manager"
 require_relative "hook_manager"
@@ -30,7 +31,56 @@ module WorktreeManager
       puts VERSION
     end
 
+    desc "init", "Initialize worktree configuration file"
+    long_desc <<-LONGDESC
+    `wm init` creates a .worktree.yml configuration file in your repository.
+
+    This command copies the example configuration file to your current directory,
+    allowing you to customize worktree settings and hooks.
+
+    Examples:
+      wm init         # Create .worktree.yml from example
+      wm init --force # Overwrite existing .worktree.yml
+    LONGDESC
+    method_option :force, aliases: "-f", type: :boolean, desc: "Force overwrite existing .worktree.yml"
+    def init
+      validate_main_repository!
+      
+      # Check if .worktree.yml already exists
+      config_file = ".worktree.yml"
+      if File.exist?(config_file) && !options[:force]
+        puts "Error: #{config_file} already exists. Use --force to overwrite."
+        exit(1)
+      end
+      
+      # Find example file
+      example_file = find_example_file
+      unless example_file
+        puts "Error: Could not find .worktree.yml.example file."
+        exit(1)
+      end
+      
+      # Copy example file
+      begin
+        FileUtils.cp(example_file, config_file)
+        puts "Created #{config_file} from example."
+        puts "Edit this file to customize your worktree configuration."
+      rescue => e
+        puts "Error: Failed to create configuration file: #{e.message}"
+        exit(1)
+      end
+    end
+
     desc "list", "List all worktrees"
+    long_desc <<-LONGDESC
+    `wm list` displays all git worktrees in the current repository.
+
+    This command can be run from either the main repository or any worktree.
+    When run from a worktree, it shows the path to the main repository.
+
+    Example:
+      wm list  # List all worktrees
+    LONGDESC
     def list
       # list command can be used from worktree
       main_repo_path = find_main_repository_path
@@ -60,6 +110,27 @@ module WorktreeManager
     end
 
     desc "add NAME_OR_PATH [BRANCH]", "Create a new worktree"
+    long_desc <<-LONGDESC
+    `wm add` creates a new git worktree at the specified location.
+
+    The NAME_OR_PATH can be:
+      - A simple name (e.g., 'feature'): Creates in configured worktrees_dir
+      - A relative path (e.g., '../projects/feature'): Creates at that path
+      - An absolute path: Creates at the exact location
+
+    Options:
+      -b, --branch: Create a new branch for the worktree
+      -t, --track: Create a branch tracking a remote branch
+      -f, --force: Force creation even if directory exists
+      --no-hooks: Skip pre_add and post_add hooks
+
+    Examples:
+      wm add feature          # Create worktree at ../feature using existing branch
+      wm add feature main     # Create worktree using 'main' branch
+      wm add feature -b new   # Create worktree with new branch 'new'
+      wm add feature -t origin/develop  # Track remote branch
+      wm add ../custom/path   # Create at specific path
+    LONGDESC
     method_option :branch, aliases: "-b", desc: "Create a new branch for the worktree"
     method_option :track, aliases: "-t", desc: "Track a remote branch"
     method_option :force, aliases: "-f", type: :boolean, desc: "Force creation even if directory exists"
@@ -405,6 +476,21 @@ module WorktreeManager
     end
 
     private
+
+    def find_example_file
+      # First check in the current project (for development)
+      local_example = File.expand_path(".worktree.yml.example", File.dirname(__FILE__) + "/../..")
+      return local_example if File.exist?(local_example)
+      
+      # Then check in the gem installation path
+      gem_spec = Gem::Specification.find_by_name("worktree_manager") rescue nil
+      if gem_spec
+        gem_example = File.join(gem_spec.gem_dir, ".worktree.yml.example")
+        return gem_example if File.exist?(gem_example)
+      end
+      
+      nil
+    end
 
     def is_main_repository?(path)
       # Main repository has .git as a directory, worktrees have .git as a file
