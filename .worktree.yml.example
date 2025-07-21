@@ -1,0 +1,45 @@
+# Worktree Manager Configuration
+
+# Directory where worktrees will be created
+# When you run 'wm add feature', it creates at '../feature'
+worktrees_dir: "../"
+
+# Main branch name for 'wm reset' command
+# Change to "master" if your main branch is different
+main_branch_name: "main"
+
+# Hooks: Commands to run during worktree operations
+# Available environment variables:
+#   $WORKTREE_PATH - Worktree path (e.g., ../feature)
+#   $WORKTREE_BRANCH - Branch name
+#   $WORKTREE_MAIN - Main repository path
+#   $WORKTREE_ABSOLUTE_PATH - Full path to worktree
+#   $WORKTREE_FORCE - "true" if --force was used
+
+# Simple format (single command)
+# hooks:
+#   pre_add: "echo 'Creating worktree for $WORKTREE_BRANCH'"
+#   post_remove: "echo 'Removed $WORKTREE_PATH'"
+
+# Array format (multiple commands)
+# hooks:
+#   post_add:
+#     - "bundle install"
+#     - "cp .env.example .env"
+#     - "echo 'Setup complete!'"
+
+# Advanced format with options
+# hooks:
+#   post_add:
+#     commands:
+#       - "bundle install"
+#       - "yarn install"
+#       - "rake db:create db:migrate"
+#     pwd: "$WORKTREE_ABSOLUTE_PATH"  # Working directory (default: worktree for post_add)
+#     stop_on_error: false  # Continue even if a command fails (default: true)
+#   
+#   pre_remove:
+#     commands:
+#       - "git add -A"
+#       - "git stash push -m 'Auto-stash: $WORKTREE_BRANCH'"
+#     stop_on_error: false
