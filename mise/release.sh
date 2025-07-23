@@ -87,16 +87,30 @@ if gem build worktree_manager.gemspec; then
     git push origin
     git push origin "v$NEW_VERSION"
     
-    echo "Publishing to GitHub Packages..."
-    if gem push --key github --host https://rubygems.pkg.github.com/nacyot worktree_manager-$NEW_VERSION.gem; then
-        echo "✓ Gem published successfully to GitHub Packages"
-        echo "Release complete!"
-        echo "Version $NEW_VERSION has been released and published."
+    # Ask about publishing to RubyGems.org
+    echo ""
+    read -p "Publish to RubyGems.org? (y/N): " publish_confirm
+    
+    if [[ "$publish_confirm" =~ ^[Yy]$ ]]; then
+        echo "Publishing to RubyGems.org..."
+        if gem push worktree_manager-$NEW_VERSION.gem; then
+            echo "✓ Gem published successfully to RubyGems.org"
+            echo ""
+            echo "View your gem at: https://rubygems.org/gems/worktree_manager"
+        else
+            echo "Error: RubyGems.org push failed"
+            echo "You can manually publish with:"
+            echo "  gem push worktree_manager-$NEW_VERSION.gem"
+            exit 1
+        fi
     else
-        echo "Warning: Git operations succeeded but gem push failed"
-        echo "You can manually publish with:"
-        echo "  gem push --key github --host https://rubygems.pkg.github.com/nacyot worktree_manager-$NEW_VERSION.gem"
+        echo "Skipping RubyGems.org publishing."
+        echo "You can manually publish later with:"
+        echo "  gem push worktree_manager-$NEW_VERSION.gem"
     fi
+    
+    echo "Release complete!"
+    echo "Version $NEW_VERSION has been released."
 else
     echo "Error: Gem build failed with new version"
     # Revert version change
