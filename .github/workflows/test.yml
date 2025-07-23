@@ -17,12 +17,21 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        ruby: ['3.0', '3.1', '3.2', '3.3', '3.4']
+        ruby: ['3.1', '3.2', '3.3', '3.4']
         experimental: [false]
         include:
-          # Test on Windows with latest stable Ruby
+          # Test on Windows with each Ruby version
+          - os: windows-latest
+            ruby: '3.1'
+            experimental: true
+          - os: windows-latest
+            ruby: '3.2'
+            experimental: true
           - os: windows-latest
             ruby: '3.3'
+            experimental: true
+          - os: windows-latest
+            ruby: '3.4'
             experimental: true
           # Test with Ruby head on Ubuntu
           - os: ubuntu-latest
