@@ -325,7 +325,8 @@ module WorktreeManager
       end
       
       # Reset current branch to origin/main
-      reset_command = options[:force] ? "git reset --hard origin/#{main_branch_name}" : "git reset origin/#{main_branch_name}"
+      # Always use --hard reset to ensure clean working directory
+      reset_command = "git reset --hard origin/#{main_branch_name}"
       reset_output, reset_status = Open3.capture2e(reset_command)
       
       if reset_status.success?

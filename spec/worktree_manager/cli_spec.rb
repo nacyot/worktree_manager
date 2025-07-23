@@ -894,7 +894,7 @@ RSpec.describe WorktreeManager::CLI do
               .and_return(["", double(success?: true)])
             allow(Open3).to receive(:capture2e).with("git fetch origin main")
               .and_return(["", double(success?: true)])
-            allow(Open3).to receive(:capture2e).with("git reset origin/main")
+            allow(Open3).to receive(:capture2e).with("git reset --hard origin/main")
               .and_return(["Resetting to origin/main\n", double(success?: true)])
           end
 
@@ -924,7 +924,7 @@ RSpec.describe WorktreeManager::CLI do
               .and_return(["", double(success?: true)])
             allow(Open3).to receive(:capture2e).with("git fetch origin main")
               .and_return(["", double(success?: true)])
-            allow(Open3).to receive(:capture2e).with("git reset origin/main")
+            allow(Open3).to receive(:capture2e).with("git reset --hard origin/main")
               .and_return(["fatal: ambiguous argument 'origin/main'", double(success?: false)])
             stub_exit
           end
@@ -942,7 +942,7 @@ RSpec.describe WorktreeManager::CLI do
               .and_return(["", double(success?: true)])
             allow(Open3).to receive(:capture2e).with("git fetch origin master")
               .and_return(["", double(success?: true)])
-            allow(Open3).to receive(:capture2e).with("git reset origin/master")
+            allow(Open3).to receive(:capture2e).with("git reset --hard origin/master")
               .and_return(["", double(success?: true)])
           end
 
