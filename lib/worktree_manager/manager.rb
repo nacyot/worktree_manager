@@ -1,29 +1,29 @@
-require "open3"
-require_relative "worktree"
+require 'open3'
+require_relative 'worktree'
 
 module WorktreeManager
   class Manager
     attr_reader :repository_path
 
-    def initialize(repository_path = ".")
+    def initialize(repository_path = '.')
       @repository_path = File.expand_path(repository_path)
       validate_git_repository!
     end
 
     def list
-      output, status = execute_git_command("worktree list --porcelain")
+      output, status = execute_git_command('worktree list --porcelain')
       return [] unless status.success?
 
       parse_worktree_list(output)
     end
 
     def add(path, branch = nil, force: false)
-      command = ["worktree", "add"]
-      command << "--force" if force
+      command = %w[worktree add]
+      command << '--force' if force
       command << path
       command << branch if branch
 
-      output, status = execute_git_command(command.join(" "))
+      output, status = execute_git_command(command.join(' '))
       raise Error, output unless status.success?
 
       # Return created worktree information
@@ -33,12 +33,12 @@ module WorktreeManager
     end
 
     def add_with_new_branch(path, branch, force: false)
-      command = ["worktree", "add"]
-      command << "--force" if force
-      command << "-b" << branch
+      command = %w[worktree add]
+      command << '--force' if force
+      command << '-b' << branch
       command << path
 
-      output, status = execute_git_command(command.join(" "))
+      output, status = execute_git_command(command.join(' '))
       raise Error, output unless status.success?
 
       # Return created worktree information
@@ -47,18 +47,18 @@ module WorktreeManager
 
     def add_tracking_branch(path, local_branch, remote_branch, force: false)
       # Fetch the remote branch first
-      remote, branch_name = remote_branch.split("/", 2)
+      remote, branch_name = remote_branch.split('/', 2)
       fetch_output, fetch_status = execute_git_command("fetch #{remote} #{branch_name}")
       raise Error, "Failed to fetch remote branch: #{fetch_output}" unless fetch_status.success?
 
       # Create worktree with new branch tracking the remote
-      command = ["worktree", "add"]
-      command << "--force" if force
-      command << "-b" << local_branch
+      command = %w[worktree add]
+      command << '--force' if force
+      command << '-b' << local_branch
       command << path
       command << "#{remote_branch}"
 
-      output, status = execute_git_command(command.join(" "))
+      output, status = execute_git_command(command.join(' '))
       raise Error, output unless status.success?
 
       # Return created worktree information
@@ -66,29 +66,29 @@ module WorktreeManager
     end
 
     def remove(path, force: false)
-      command = ["worktree", "remove"]
-      command << "--force" if force
+      command = %w[worktree remove]
+      command << '--force' if force
       command << path
 
-      output, status = execute_git_command(command.join(" "))
+      output, status = execute_git_command(command.join(' '))
       raise Error, output unless status.success?
-      
+
       true
     end
 
     def prune
-      output, status = execute_git_command("worktree prune")
+      output, status = execute_git_command('worktree prune')
       raise Error, output unless status.success?
-      
+
       true
     end
 
     private
 
     def validate_git_repository!
-      unless File.directory?(File.join(@repository_path, ".git"))
-        raise Error, "Not a git repository: #{@repository_path}"
-      end
+      return if File.directory?(File.join(@repository_path, '.git'))
+
+      raise Error, "Not a git repository: #{@repository_path}"
     end
 
     def execute_git_command(command)
@@ -107,11 +107,11 @@ module WorktreeManager
         case line
         when /^worktree (.+)$/
           worktrees << Worktree.new(current_worktree) unless current_worktree.empty?
-          current_worktree = { path: $1 }
+          current_worktree = { path: ::Regexp.last_match(1) }
         when /^HEAD (.+)$/
-          current_worktree[:head] = $1
+          current_worktree[:head] = ::Regexp.last_match(1)
         when /^branch (.+)$/
-          current_worktree[:branch] = $1
+          current_worktree[:branch] = ::Regexp.last_match(1)
         when /^detached$/
           current_worktree[:detached] = true
         when /^bare$/

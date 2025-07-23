@@ -28,7 +28,7 @@ module WorktreeManager
     end
 
     def main?
-      @branch == "main" || @branch == "master"
+      @branch == 'main' || @branch == 'master'
     end
 
     def exists?

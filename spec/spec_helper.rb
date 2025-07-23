@@ -1,11 +1,11 @@
-require "bundler/setup"
-require "worktree_manager"
-require "worktree_manager/cli"
-require "worktree_manager/hook_manager"
-require "worktree_manager/manager"
-require "worktree_manager/worktree"
-require "worktree_manager/config_manager"
-require "tty-prompt"
+require 'bundler/setup'
+require 'worktree_manager'
+require 'worktree_manager/cli'
+require 'worktree_manager/hook_manager'
+require 'worktree_manager/manager'
+require 'worktree_manager/worktree'
+require 'worktree_manager/config_manager'
+require 'tty-prompt'
 
 RSpec.configure do |config|
   config.expect_with :rspec do |c|
@@ -14,7 +14,7 @@ RSpec.configure do |config|
 end
 
 # SystemExit handling in tests
-# 
+#
 # This project's tests often involve CLI commands that call exit.
 # There are two approaches to handle this:
 #

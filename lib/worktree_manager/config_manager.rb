@@ -1,41 +1,39 @@
-require "yaml"
+require 'yaml'
 
 module WorktreeManager
   class ConfigManager
     DEFAULT_CONFIG_FILES = [
-      ".worktree.yml",
-      ".git/.worktree.yml"
+      '.worktree.yml',
+      '.git/.worktree.yml'
     ].freeze
 
-    DEFAULT_WORKTREES_DIR = "../"
-    DEFAULT_MAIN_BRANCH_NAME = "main"
+    DEFAULT_WORKTREES_DIR = '../'
+    DEFAULT_MAIN_BRANCH_NAME = 'main'
 
-    def initialize(repository_path = ".")
+    def initialize(repository_path = '.')
       @repository_path = File.expand_path(repository_path)
       @config = load_config
     end
 
     def worktrees_dir
-      @config["worktrees_dir"] || DEFAULT_WORKTREES_DIR
+      @config['worktrees_dir'] || DEFAULT_WORKTREES_DIR
     end
 
     def hooks
-      @config["hooks"] || {}
+      @config['hooks'] || {}
     end
 
     def main_branch_name
-      @config["main_branch_name"] || DEFAULT_MAIN_BRANCH_NAME
+      @config['main_branch_name'] || DEFAULT_MAIN_BRANCH_NAME
     end
 
     def resolve_worktree_path(name_or_path)
       # If it's an absolute path, return as is
-      return name_or_path if name_or_path.start_with?("/")
-      
+      return name_or_path if name_or_path.start_with?('/')
+
       # If it contains a path separator, treat it as a relative path
-      if name_or_path.include?("/")
-        return File.expand_path(name_or_path, @repository_path)
-      end
-      
+      return File.expand_path(name_or_path, @repository_path) if name_or_path.include?('/')
+
       # Otherwise, use worktrees_dir as the base
       base_dir = File.expand_path(worktrees_dir, @repository_path)
       File.join(base_dir, name_or_path)
@@ -49,7 +47,7 @@ module WorktreeManager
 
       begin
         YAML.load_file(config_file) || {}
-      rescue => e
+      rescue StandardError => e
         puts "Warning: Failed to load config file #{config_file}: #{e.message}"
         {}
       end
