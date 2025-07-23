@@ -66,6 +66,10 @@ echo "New version: $NEW_VERSION"
 # Update .version file FIRST
 echo "$NEW_VERSION" > .version
 
+# Update Gemfile.lock with new version
+echo "Updating Gemfile.lock..."
+bundle install
+
 # Build the gem with new version
 echo "Building gem with version $NEW_VERSION..."
 if gem build worktree_manager.gemspec; then
@@ -73,7 +77,7 @@ if gem build worktree_manager.gemspec; then
     
     # Git operations
     echo "Committing version bump..."
-    git add .version
+    git add .version Gemfile.lock
     git commit -m "Bump version to $NEW_VERSION"
     
     echo "Creating git tag..."
@@ -97,5 +101,6 @@ else
     echo "Error: Gem build failed with new version"
     # Revert version change
     echo "$CURRENT_VERSION" > .version
+    bundle install  # Revert Gemfile.lock
     exit 1
 fi
